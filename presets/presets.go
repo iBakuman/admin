@@ -1077,13 +1077,12 @@ func (b *Builder) InjectAssets(ctx *web.EventContext) {
 	b.InjectExtraAssets(ctx)
 
 	if len(os.Getenv("DEV_PRESETS")) > 0 {
-		ctx.Injector.TailHTML(`
-<script src='http://localhost:3080/js/chunk-vendors.js'></script>
-<script src='http://localhost:3080/js/app.js'></script>
-<script src='http://localhost:3100/js/chunk-vendors.js'></script>
-<script src='http://localhost:3100/js/app.js'></script>
-			`)
-
+		mainDevJS := fmt.Sprintf("<script src='%s/assets/main-dev.js'></script>", b.prefix)
+		vuetifyxjs := `<script src='http://localhost:3080/js/chunk-vendors.js'>
+</script><script src='http://localhost:3080/js/app.js'></script>`
+		corejs := `<script src='http://localhost:3100/js/chunk-vendors.js'>
+</script><script src='http://localhost:3100/js/app.js'></script>`
+		ctx.Injector.TailHTML(mainDevJS + vuetifyxjs + corejs)
 	} else {
 		ctx.Injector.TailHTML(strings.Replace(`
 			<script src='{{prefix}}/assets/main.js'></script>
@@ -1162,6 +1161,14 @@ func (b *Builder) initMux() {
 		),
 	)
 	log.Println("mounted url", mainJSPath)
+
+	mainDevJSPath := b.prefix + "/assets/main-dev.js"
+	mux.Handle(pat.Get(mainDevJSPath),
+		ub.PacksHandler("text/javascript",
+			Vuetify(b.vuetifyOptions),
+			JSComponentsPack(),
+		),
+	)
 
 	vueJSPath := b.prefix + "/assets/vue.js"
 	mux.Handle(pat.Get(vueJSPath),
