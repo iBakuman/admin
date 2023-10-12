@@ -26,7 +26,7 @@ export CGO_CFLAGS_ALLOW="-Xpreprocessor"
 
 export Site_Domain=""
 
-export RECAPTCHA_SITE_KEY=""
-export RECAPTCHA_SECRET_KEY=""
+export RECAPTCHA_SITE_KEY="a"
+export RECAPTCHA_SECRET_KEY="a"
 
 export RESET_AND_IMPORT_INITIAL_DATA=false
