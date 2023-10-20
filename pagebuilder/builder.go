@@ -484,7 +484,7 @@ function(e){
 	eb := pm.Editing("TemplateSelection", "Title", "CategoryID", "Slug")
 	eb.ValidateFunc(func(obj interface{}, ctx *web.EventContext) (err web.ValidationErrors) {
 		c := obj.(*Page)
-		err = pageValidator(c, db, l10nB)
+		err = pageValidator(ctx.R.Context(), c, db, l10nB)
 		return
 	})
 	eb.Field("Slug").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
@@ -866,9 +866,7 @@ func (b *Builder) ConfigCategory(pb *presets.Builder, db *gorm.DB, l10nB *l10n.B
 			ErrorMessages(vErr.GetFieldErrors("Category.Category")...)
 	}).SetterFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) (err error) {
 		m := obj.(*Category)
-		p := ctx.R.FormValue(field.Name)
-		p = path.Join("/", p)
-		m.Path = p
+		m.Path = path.Join("/", m.Path)
 		return nil
 	})
 
