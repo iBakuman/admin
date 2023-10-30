@@ -8,7 +8,6 @@ import (
 	"github.com/qor5/x/perm"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 var db *gorm.DB
@@ -20,7 +19,7 @@ func ConnectDB() *gorm.DB {
 		panic(err)
 	}
 
-	db.Logger = db.Logger.LogMode(logger.Info)
+	// db.Logger = db.Logger.LogMode(logger.Info)
 
 	if err = db.AutoMigrate(
 		&models.Post{},
