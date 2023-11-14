@@ -1,10 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -34,39 +34,20 @@ func main() {
 	}
 }
 
-func ConfigureEnv() {
-	file, err := os.Open("./dev_env")
+func init() {
+	cmd := exec.Command("/bin/bash", "-c", "source ./dev_env && env")
+	output, err := cmd.Output()
 	if err != nil {
 		panic(err)
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(file)
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "export") || strings.HasPrefix(line, "EXPORT") {
-			parts := strings.SplitN(line, "=", 2)
-			key := strings.TrimPrefix(parts[0], "export ")
-			val := strings.TrimSpace(parts[1])
-			if v, has := os.LookupEnv(key); !has {
-				val := strings.Trim(val, `"`)
-				fmt.Printf("set environment variable %s to %s.\n", key, val)
-				err := os.Setenv(key, val)
-				if err != nil {
-					panic(err)
-				}
-			} else {
-				fmt.Printf("environment variable %s has already exists, its value is %s.\n", key, v)
+	envLines := strings.Split(string(output), "\n")
+	for _, line := range envLines {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			err := os.Setenv(parts[0], parts[1])
+			if err != nil {
+				return
 			}
 		}
 	}
-}
-
-func init() {
-	ConfigureEnv()
 }

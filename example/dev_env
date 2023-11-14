@@ -2,10 +2,13 @@ export TZ="Asia/Tokyo"
 export DB_PARAMS="user=example password=123 dbname=example_dev sslmode=disable host=localhost port=6432 TimeZone=Asia/Tokyo"
 export PORT="9500"
 export AWS_SDK_LOAD_CONFIG=1
-export S3_Bucket=""
-export S3_Region=""
-export S3_Publish_Bucket=""
-export S3_Publish_Region=""
+export S3_Bucket="qor5-test-example"
+export S3_Region="ap-northeast-1"
+export S3_Endpoint="https://cdn.qor5.theplant-dev.com"
+export S3_Publish_Bucket="qor5-test-example-publisher"
+export S3_Publish_Region="ap-northeast-1"
+export PUBLISH_URL="https://cdn.qor5.theplant-dev.com"
+$(oidc2aws -env -sourcerole arn:aws:iam::562055475000:role/qor5-be-dev arn:aws:iam::475867236237:role/developer)
 
 export BASE_URL="http://localhost:9500"
 export LOGIN_SECRET="test"
