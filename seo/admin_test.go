@@ -3,6 +3,7 @@ package seo
 import (
 	"bytes"
 	"errors"
+	"github.com/qor5/admin/presets/gorm2op"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,7 @@ import (
 
 func TestAdmin(t *testing.T) {
 	var (
-		admin  = presets.New().URIPrefix("/admin")
+		admin  = presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(GlobalDB))
 		server = httptest.NewServer(admin)
 	)
 
@@ -32,10 +33,7 @@ func TestAdmin(t *testing.T) {
 		}
 
 		var seoSetting = collection.NewSettingModelSlice()
-		err := GlobalDB.Find(seoSetting, "name in (?)", []string{"Product Detail", "Product", collection.globalName}).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			t.Errorf("SEO Setting should be created successfully")
-		}
+		GlobalDB.Find(seoSetting, "name in (?)", []string{"Product Detail", "Product", collection.globalName})
 
 		if reflect.Indirect(reflect.ValueOf(seoSetting)).Len() != 3 {
 			t.Errorf("SEO Setting should be created successfully")
