@@ -43,6 +43,9 @@ type QorSEOSetting struct {
 	Name      string `gorm:"primary_key"`
 	Setting   Setting
 	Variables Variables `sql:"type:text"`
+
+	ID        uint `gorm:"autoIncrement"`
+	Path      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time `gorm:"index"`
@@ -51,17 +54,17 @@ type QorSEOSetting struct {
 
 // Setting defined meta's attributes
 type Setting struct {
-	Title                          string `gorm:"size:4294967295"`
-	Description                    string
-	Keywords                       string
-	OpenGraphTitle                 string
-	OpenGraphDescription           string
-	OpenGraphURL                   string
-	OpenGraphType                  string
-	OpenGraphImageURL              string
-	OpenGraphImageFromMediaLibrary media_library.MediaBox
-	OpenGraphMetadata              []OpenGraphMetadata
-	EnabledCustomize               bool
+	Title                          string                 `gorm:"size:4294967295" json:",omitempty"`
+	Description                    string                 `json:",omitempty"`
+	Keywords                       string                 `json:",omitempty"`
+	OpenGraphTitle                 string                 `json:",omitempty"`
+	OpenGraphDescription           string                 `json:",omitempty"`
+	OpenGraphURL                   string                 `json:",omitempty"`
+	OpenGraphType                  string                 `json:",omitempty"`
+	OpenGraphImageURL              string                 `json:",omitempty"`
+	OpenGraphImageFromMediaLibrary media_library.MediaBox `json:",omitempty"`
+	OpenGraphMetadata              []OpenGraphMetadata    `json:",omitempty"`
+	EnabledCustomize               bool                   `json:",omitempty"`
 }
 
 // OpenGraphMetadata open graph meta data
@@ -69,6 +72,30 @@ type OpenGraphMetadata struct {
 	Property string
 	Content  string
 }
+
+// func (s *QorSEOSetting) PrimarySlug() string {
+// 	if l10nON {
+// 		return fmt.Sprintf("%v_%v", s.Name, s.LocaleCode)
+// 	}
+// 	return fmt.Sprintf("%v", s.LocaleCode)
+// }
+//
+// func (s *QorSEOSetting) PrimaryColumnValuesBySlug(slug string) map[string]string {
+// 	segs := strings.Split(slug, "_")
+// 	if l10nON {
+// 		if len(segs) != 2 {
+// 			panic(fmt.Sprintf("malformed slug: %v", slug))
+// 		}
+// 		return map[string]string{
+// 			"name":        segs[0],
+// 			"locale_code": segs[1],
+// 		}
+// 	}
+// 	if len(segs) != 1 {
+// 		panic(fmt.Sprintf("malformed slug: %v", slug))
+// 	}
+// 	return map[string]string{"name": segs[0]}
+// }
 
 func (s *QorSEOSetting) SetSEOSetting(setting Setting) {
 	s.Setting = setting

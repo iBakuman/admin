@@ -30,7 +30,7 @@ const (
 
 var permVerifier *perm.Verifier
 
-func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) {
+func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) (pm *presets.ModelBuilder) {
 	if err := db.AutoMigrate(collection.settingModel); err != nil {
 		panic(err)
 	}
@@ -40,8 +40,46 @@ func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) {
 	}
 
 	b.GetWebBuilder().RegisterEventFunc(saveEvent, collection.save)
-	b.Model(collection.settingModel).PrimaryField("Name").Label("SEO").Listing().PageFunc(collection.pageFunc)
 
+	pm = b.Model(collection.settingModel).PrimaryField("Name").Label("SEO")
+	// Configure Listing Page
+	{
+
+		pml := pm.Listing("Name", "CreatedAt")
+		// disable new btn globally, no one can add new seo record after server start up.
+		pml.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
+			return nil
+		})
+
+		// Remove the menu from each line
+		pml.RowMenu().Empty()
+
+		// Configure the indentation for Name field to display hierarchy.
+		pml.Field("Name").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+			seo := obj.(*QorSEOSetting)
+			icon := "folder"
+			seoToPriorities := collection.GetSEOPriorities()
+			return h.Td(
+				h.Div(
+					VIcon(icon).Small(true).Class("mb-1"),
+					h.Text(seo.Name),
+				).Style(fmt.Sprintf("padding-left: %dpx;", 32*seoToPriorities[seo.Name])),
+			)
+		})
+
+		oldSearcher := pml.Searcher
+		pml.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
+			r, totalCount, err = oldSearcher(model, params, ctx)
+			return
+		})
+	}
+	// pm.Editing("Setting").Field("Setting").ComponentFunc(
+	// 	func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+	// 		return collection.vseo(fieldPrefix, seo, &setting, ctx.R),
+	// 	},
+	// )
+	// pm.Listing().PageFunc(collection.pageFunc)
+	// pm = b.Model(collection.settingModel).Label("SEO")
 	b.FieldDefaults(presets.WRITE).
 		FieldType(Setting{}).
 		ComponentFunc(collection.EditingComponentFunc).
@@ -53,6 +91,7 @@ func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) {
 
 	b.ExtraAsset("/vue-seo.js", "text/javascript", SeoJSComponentsPack())
 	permVerifier = perm.NewVerifier("seo", b.GetPermission())
+	return
 }
 
 func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) (err error) {

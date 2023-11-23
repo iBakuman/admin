@@ -1,0 +1,525 @@
+@startuml
+namespace containers {
+    class Brand << (S,Aquamarine) >> {
+        + Image media_library.MediaBox
+        + Name string
+
+    }
+    class BrandGrid << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Brands Brands
+
+        + TableName() string
+
+    }
+    class Brands << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class ContactForm << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Heading string
+        + Text string
+        + SendButtonText string
+        + FormButtonText string
+        + MessagePlaceholder string
+        + NamePlaceholder string
+        + EmailPlaceholder string
+        + ThankyouMessage string
+        + ActionUrl string
+        + PrivacyPolicy string
+
+        + TableName() string
+
+    }
+    class Heading << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Heading string
+        + FontColor string
+        + BackgroundColor string
+        + Link string
+        + LinkText string
+        + LinkDisplayOption string
+        + Text string
+
+        + TableName() string
+
+    }
+    class ImageContainer << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Image media_library.MediaBox
+        + BackgroundColor string
+        + TransitionBackgroundColor string
+
+        + TableName() string
+
+    }
+    class ImageListItem << (S,Aquamarine) >> {
+        + Image media_library.MediaBox
+        + Link string
+        + Heading string
+        + Subheading string
+        + Text string
+
+    }
+    class ImageListItems << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class InNumbers << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Heading string
+        + Items InNumbersItems
+
+        + TableName() string
+
+    }
+    class InNumbersItem << (S,Aquamarine) >> {
+        + Heading string
+        + Text string
+
+    }
+    class InNumbersItems << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class ListContent << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Items ListItems
+        + BackgroundColor string
+        + Link string
+        + LinkText string
+        + LinkDisplayOption string
+
+        + TableName() string
+
+    }
+    class ListContentLite << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Items ListItemLites
+        + BackgroundColor string
+
+        + TableName() string
+
+    }
+    class ListContentWithImage << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Items ImageListItems
+
+        + TableName() string
+
+    }
+    class ListItem << (S,Aquamarine) >> {
+        + HeadingIcon string
+        + Heading string
+        + Text string
+        + Link string
+        + LinkText string
+
+    }
+    class ListItemLite << (S,Aquamarine) >> {
+        + Heading string
+        + Text string
+
+    }
+    class ListItemLites << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class ListItems << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class PageTitle << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + HeroImage media_library.MediaBox
+        + NavigationLink string
+        + NavigationLinkText string
+        + HeadingIcon string
+        + Heading string
+        + Text string
+        + Tags Tags
+
+        + TableName() string
+
+    }
+    class Tags << (S,Aquamarine) >> {
+        + Value() (driver.Value, error)
+        + Scan(value <font color=blue>interface</font>{}) error
+
+    }
+    class VideoBanner << (S,Aquamarine) >> {
+        + ID uint
+        + AddTopSpace bool
+        + AddBottomSpace bool
+        + AnchorID string
+        + Video media_library.MediaBox
+        + BackgroundVideo media_library.MediaBox
+        + MobileBackgroundVideo media_library.MediaBox
+        + VideoCover media_library.MediaBox
+        + MobileVideoCover media_library.MediaBox
+        + Heading string
+        + PopupText string
+        + Text string
+        + LinkText string
+        + Link string
+
+        + TableName() string
+
+    }
+    class WebFooter << (S,Aquamarine) >> {
+        + ID uint
+        + EnglishUrl string
+        + JapaneseUrl string
+
+        + TableName() string
+
+    }
+    class WebHeader << (S,Aquamarine) >> {
+        + ID uint
+        + Color string
+
+        + TableName() string
+
+    }
+    class containers.Brands << (T, #FF7700) >>  {
+    }
+    class containers.ImageListItems << (T, #FF7700) >>  {
+    }
+    class containers.InNumbersItems << (T, #FF7700) >>  {
+    }
+    class containers.ListItemLites << (T, #FF7700) >>  {
+    }
+    class containers.ListItems << (T, #FF7700) >>  {
+    }
+    class containers.Tags << (T, #FF7700) >>  {
+    }
+    class filterTag << (S,Aquamarine) >> {
+        + Text string
+
+    }
+    class tag << (S,Aquamarine) >> {
+        + Text string
+        + FontColor string
+        + BackgroundColor string
+        + Icon string
+        + Link string
+
+    }
+}
+
+
+"containers.Brand" o-- "media_library.MediaBox"
+"containers.BrandGrid" o-- "containers.Brands"
+"containers.ImageContainer" o-- "media_library.MediaBox"
+"containers.ImageListItem" o-- "media_library.MediaBox"
+"containers.InNumbers" o-- "containers.InNumbersItems"
+"containers.ListContent" o-- "containers.ListItems"
+"containers.ListContentLite" o-- "containers.ListItemLites"
+"containers.ListContentWithImage" o-- "containers.ImageListItems"
+"containers.PageTitle" o-- "containers.Tags"
+"containers.PageTitle" o-- "media_library.MediaBox"
+"containers.VideoBanner" o-- "media_library.MediaBox"
+
+namespace pagebuilder {
+    class Builder << (S,Aquamarine) >> {
+        - prefix string
+        - wb *web.Builder
+        - db *gorm.DB
+        - containerBuilders []*ContainerBuilder
+        - ps *presets.Builder
+        - mb *presets.ModelBuilder
+        - pageStyle htmlgo.HTMLComponent
+        - pageLayoutFunc PageLayoutFunc
+        - preview http.Handler
+        - images http.Handler
+        - imagesPrefix string
+        - defaultDevice string
+        - publishBtnColor string
+        - duplicateBtnColor string
+        - templateEnabled bool
+
+        - getDevice(ctx *web.EventContext) (string, string)
+        - renderPageOrTemplate(ctx *web.EventContext, isTpl bool, pageOrTemplateID string, version string, locale string, isEditor bool) (htmlgo.HTMLComponent, *Page, error)
+        - renderContainers(ctx *web.EventContext, p *Page, isEditor bool, isReadonly bool) ([]htmlgo.HTMLComponent, error)
+        - renderContainersList(ctx *web.EventContext, pageID uint, pageVersion string, locale string, isReadonly bool) (htmlgo.HTMLComponent, error)
+        - copyContainersToNewPageVersion(db *gorm.DB, pageID int, locale string, oldPageVersion string, newPageVersion string) error
+        - copyContainersToAnotherPage(db *gorm.DB, pageID int, pageVersion string, locale string, toPageID int, toPageVersion string, toPageLocale string) error
+        - localizeContainersToAnotherPage(db *gorm.DB, pageID int, pageVersion string, locale string, toPageID int, toPageVersion string, toPageLocale string) error
+        - localizeCategory(db *gorm.DB, fromCategoryID uint, fromLocale string, toLocale string) error
+        - createModelAfterLocalizeDemoContainer(db *gorm.DB, c *DemoContainer) error
+        - getContainerBuilders(cs []*Container) []*editorContainer
+        - pageEditorLayout(in web.PageFunc, config *presets.LayoutConfig) web.PageFunc
+
+        + Prefix(v string) *Builder
+        + PageStyle(v htmlgo.HTMLComponent) *Builder
+        + PageLayout(v PageLayoutFunc) *Builder
+        + Images(v http.Handler, imagesPrefix string) *Builder
+        + DefaultDevice(v string) *Builder
+        + GetPresetsBuilder() *presets.Builder
+        + PublishBtnColor(v string) *Builder
+        + DuplicateBtnColor(v string) *Builder
+        + TemplateEnabled(v bool) *Builder
+        + Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder, activityB *activity.ActivityBuilder, publisher *publish.Builder, seoCollection *seo.Collection) *presets.ModelBuilder
+        + ConfigCategory(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder) *presets.ModelBuilder
+        + ConfigSharedContainer(pb *presets.Builder, db *gorm.DB) *presets.ModelBuilder
+        + ConfigDemoContainer(pb *presets.Builder, db *gorm.DB) *presets.ModelBuilder
+        + ConfigTemplate(pb *presets.Builder, db *gorm.DB) *presets.ModelBuilder
+        + ContainerByName(name string) *ContainerBuilder
+        + RegisterContainer(name string) *ContainerBuilder
+        + ServeHTTP(w http.ResponseWriter, r *http.Request) 
+        + PageContent(ctx *web.EventContext) (web.PageResponse, error)
+        + Preview(ctx *web.EventContext) (web.PageResponse, error)
+        + Editor(ctx *web.EventContext) (web.PageResponse, error)
+        + AddContainer(ctx *web.EventContext) (web.EventResponse, error)
+        + MoveContainer(ctx *web.EventContext) (web.EventResponse, error)
+        + ToggleContainerVisibility(ctx *web.EventContext) (web.EventResponse, error)
+        + DeleteContainerConfirmation(ctx *web.EventContext) (web.EventResponse, error)
+        + DeleteContainer(ctx *web.EventContext) (web.EventResponse, error)
+        + AddContainerToPage(pageID int, pageVersion string, locale string, containerName string) (uint, error)
+        + AddSharedContainerToPage(pageID int, pageVersion string, locale string, containerName string, modelID uint) error
+        + MarkAsSharedContainer(ctx *web.EventContext) (web.EventResponse, error)
+        + RenameContainer(ctx *web.EventContext) (web.EventResponse, error)
+        + RenameContainerDialog(ctx *web.EventContext) (web.EventResponse, error)
+        + AddContainerDialog(ctx *web.EventContext) (web.EventResponse, error)
+
+    }
+    class Category << (S,Aquamarine) >> {
+        + Name string
+        + Path string
+        + Description string
+        + IndentLevel int
+
+        + PrimarySlug() string
+        + PrimaryColumnValuesBySlug(slug string) <font color=blue>map</font>[string]string
+        + TableName() string
+
+    }
+    class Container << (S,Aquamarine) >> {
+        + PageID uint
+        + PageVersion string
+        + ModelName string
+        + ModelID uint
+        + DisplayOrder float64
+        + Shared bool
+        + Hidden bool
+        + DisplayName string
+        + LocalizeFromModelID uint
+
+        + PrimarySlug() string
+        + PrimaryColumnValuesBySlug(slug string) <font color=blue>map</font>[string]string
+        + TableName() string
+
+    }
+    class ContainerBuilder << (S,Aquamarine) >> {
+        - builder *Builder
+        - name string
+        - mb *presets.ModelBuilder
+        - model <font color=blue>interface</font>{}
+        - modelType reflect.Type
+        - renderFunc RenderFunc
+        - cover string
+
+        - configureRelatedOnlinePagesTab() 
+
+        + Model(m <font color=blue>interface</font>{}) *ContainerBuilder
+        + URIName(uri string) *ContainerBuilder
+        + GetModelBuilder() *presets.ModelBuilder
+        + RenderFunc(v RenderFunc) *ContainerBuilder
+        + Cover(v string) *ContainerBuilder
+        + NewModel() <font color=blue>interface</font>{}
+        + ModelTypeName() string
+        + Editing(vs ...<font color=blue>interface</font>{}) *presets.EditingBuilder
+
+    }
+    class ContainerSorter << (S,Aquamarine) >> {
+        + Items []ContainerSorterItem
+
+    }
+    class ContainerSorterItem << (S,Aquamarine) >> {
+        + Index int
+        + Label string
+        + ModelName string
+        + ModelID string
+        + DisplayName string
+        + ContainerID string
+        + URL string
+        + Shared bool
+        + VisibilityIcon string
+        + ParamID string
+
+    }
+    class DemoContainer << (S,Aquamarine) >> {
+        + ModelName string
+        + ModelID uint
+
+        + PrimarySlug() string
+        + PrimaryColumnValuesBySlug(slug string) <font color=blue>map</font>[string]string
+        + TableName() string
+
+    }
+    class Messages << (S,Aquamarine) >> {
+        + Category string
+        + Preview string
+        + Containers string
+        + AddContainers string
+        + New string
+        + Shared string
+        + Select string
+        + SelectedTemplateLabel string
+        + CreateFromTemplate string
+        + ChangeTemplate string
+        + RelatedOnlinePages string
+        + RepublishAllRelatedOnlinePages string
+        + Unnamed string
+        + NotDescribed string
+        + Blank string
+        + NewPage string
+        + Duplicate string
+        + FilterTabAllVersions string
+        + FilterTabOnlineVersion string
+        + FilterTabNamedVersions string
+        + Rename string
+
+    }
+    class Page << (S,Aquamarine) >> {
+        + Title string
+        + Slug string
+        + CategoryID uint
+        + SEO seo.Setting
+
+        - getPublishUrl(localePath string, categoryPath string) string
+        - getAccessUrl(publishUrl string) string
+        - getPublishContent(b *Builder, ctx context.Context) (string, error)
+
+        + GetID() uint
+        + TableName() string
+        + L10nON() 
+        + PrimarySlug() string
+        + PrimaryColumnValuesBySlug(slug string) <font color=blue>map</font>[string]string
+        + PermissionRN() []string
+        + GetCategory(db *gorm.DB) (Category, error)
+        + GetPublishActions(db *gorm.DB, ctx context.Context, storage oss.StorageInterface) ([]*publish.PublishAction, error)
+        + GetUnPublishActions(db *gorm.DB, ctx context.Context, storage oss.StorageInterface) ([]*publish.PublishAction, error)
+
+    }
+    class PageLayoutInput << (S,Aquamarine) >> {
+        + Page *Page
+        + SeoTags template.HTML
+        + CanonicalLink template.HTML
+        + StructuredData template.HTML
+        + FreeStyleCss []string
+        + FreeStyleTopJs []string
+        + FreeStyleBottomJs []string
+        + Header htmlgo.HTMLComponent
+        + Footer htmlgo.HTMLComponent
+        + IsEditor bool
+        + EditorCss []htmlgo.HTMLComponent
+        + IsPreview bool
+
+    }
+    class RenderInput << (S,Aquamarine) >> {
+        + Page *Page
+        + IsEditor bool
+        + IsReadonly bool
+        + Device string
+
+    }
+    class Template << (S,Aquamarine) >> {
+        + Name string
+        + Description string
+
+        + GetID() uint
+        + PrimarySlug() string
+        + PrimaryColumnValuesBySlug(slug string) <font color=blue>map</font>[string]string
+        + TableName() string
+        + Page() *Page
+
+    }
+    class editorContainer << (S,Aquamarine) >> {
+        - builder *ContainerBuilder
+        - container *Container
+
+    }
+    class pagePathInfo << (S,Aquamarine) >> {
+        + ID uint
+        + Version string
+        + LocaleCode string
+        + CategoryPath string
+        + Slug string
+
+    }
+    class pagebuilder.PageLayoutFunc << (T, #FF7700) >>  {
+    }
+    class pagebuilder.RenderFunc << (T, #FF7700) >>  {
+    }
+    class "<font color=blue>func</font>(<font color=blue>interface</font>{}, *RenderInput, *web.EventContext) htmlgo.HTMLComponent" as fontcolorbluefuncfontfontcolorblueinterfacefontRenderInputwebEventContexthtmlgoHTMLComponent {
+        'This class was created so that we can correctly have an alias pointing to this name. Since it contains dots that can break namespaces
+    }
+    class "<font color=blue>func</font>(htmlgo.HTMLComponent, *PageLayoutInput, *web.EventContext) htmlgo.HTMLComponent" as fontcolorbluefuncfonthtmlgoHTMLComponentPageLayoutInputwebEventContexthtmlgoHTMLComponent {
+        'This class was created so that we can correctly have an alias pointing to this name. Since it contains dots that can break namespaces
+    }
+}
+"gorm.Model" <--* "pagebuilder.Category"
+"l10n.Locale" <--* "pagebuilder.Category"
+"gorm.Model" <--* "pagebuilder.Container"
+"l10n.Locale" <--* "pagebuilder.Container"
+"gorm.Model" <--* "pagebuilder.DemoContainer"
+"l10n.Locale" <--* "pagebuilder.DemoContainer"
+"gorm.Model" <--* "pagebuilder.Page"
+"l10n.Locale" <--* "pagebuilder.Page"
+"publish.Schedule" <--* "pagebuilder.Page"
+"publish.Status" <--* "pagebuilder.Page"
+"publish.Version" <--* "pagebuilder.Page"
+"gorm.Model" <--* "pagebuilder.Template"
+"l10n.Locale" <--* "pagebuilder.Template"
+
+
+"pagebuilder.ContainerSorter" o-- "pagebuilder.ContainerSorterItem"
+"pagebuilder.Page" o-- "seo.Setting"
+"pagebuilder.PageLayoutInput" o-- "htmlgo.HTMLComponent"
+"pagebuilder.PageLayoutInput" o-- "pagebuilder.Page"
+"pagebuilder.PageLayoutInput" o-- "template.HTML"
+"pagebuilder.RenderInput" o-- "pagebuilder.Page"
+
+"containers.[]*Brand" #.. "containers.Brands"
+"containers.[]*ImageListItem" #.. "containers.ImageListItems"
+"containers.[]*InNumbersItem" #.. "containers.InNumbersItems"
+"containers.[]*ListItem" #.. "containers.ListItems"
+"containers.[]*ListItemLite" #.. "containers.ListItemLites"
+"containers.[]*tag" #.. "containers.Tags"
+"pagebuilder.fontcolorbluefuncfontfontcolorblueinterfacefontRenderInputwebEventContexthtmlgoHTMLComponent" #.. "pagebuilder.RenderFunc"
+"pagebuilder.fontcolorbluefuncfonthtmlgoHTMLComponentPageLayoutInputwebEventContexthtmlgoHTMLComponent" #.. "pagebuilder.PageLayoutFunc"
+@enduml

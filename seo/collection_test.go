@@ -2,6 +2,7 @@ package seo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -16,9 +17,9 @@ func TestRender(t *testing.T) {
 		URL:    u,
 	}
 
-	globlalSeoSetting := TestQorSEOSetting{
+	globalSeoSetting := TestQorSEOSetting{
 		QorSEOSetting: QorSEOSetting{
-			Name: GlobalSEO,
+			Name: GlobalSEOName,
 			Setting: Setting{
 				Title: "global | {{SiteName}}",
 			},
@@ -35,9 +36,9 @@ func TestRender(t *testing.T) {
 	}{
 		{
 			name:       "Render Golabl SEO with setting variables and default context variables",
-			prepareDB:  func() { GlobalDB.Save(&globlalSeoSetting) },
+			prepareDB:  func() { GlobalDB.Save(&globalSeoSetting) },
 			collection: NewCollection().SetSettingModel(&TestQorSEOSetting{}),
-			obj:        GlobalSEO,
+			obj:        GlobalSEOName,
 			want: `
 			<title>global | Qor5 dev</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
@@ -47,7 +48,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render seo setting with global setting variables",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name: "Product",
@@ -66,7 +67,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render seo setting with setting and context variables",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name: "Product",
@@ -96,7 +97,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render model setting with global and seo setting variables",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name:      "Product",
@@ -123,7 +124,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render model setting with default seo setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name: "Product",
@@ -153,7 +154,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render model setting with inherite gloabl and seo setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name: "Product",
@@ -187,7 +188,7 @@ func TestRender(t *testing.T) {
 		{
 			name: "Render model setting without inherite gloabl and seo setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globlalSeoSetting)
+				GlobalDB.Save(&globalSeoSetting)
 				product := TestQorSEOSetting{
 					QorSEOSetting: QorSEOSetting{
 						Name: "Product",
@@ -228,4 +229,127 @@ func TestRender(t *testing.T) {
 		})
 	}
 
+}
+
+func TestCollection_GetSEOPriorities(t *testing.T) {
+	cases := []struct {
+		name       string
+		collection *Collection
+		expected   map[string]int
+	}{
+		{
+			name: "case 1",
+			collection: func() *Collection {
+				collection := NewCollection()
+				collection.RegisterSEO("PLP").AddChildren(
+					collection.RegisterSEO("Region"),
+					collection.RegisterSEO("City"),
+					collection.RegisterSEO("Prefecture"),
+				)
+				collection.RegisterMultipleSEO("Post", "Product")
+				return collection
+			}(),
+			expected: map[string]int{
+				"Global SEO": 1,
+				"PLP":        2,
+				"Post":       2,
+				"Product":    2,
+				"Region":     3,
+				"City":       3,
+				"Prefecture": 3,
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			actual := c.collection.GetSEOPriorities()
+			if len(actual) != len(c.expected) {
+				t.Errorf("GetPriorities = %v, want %v", actual, c.expected)
+			}
+			for seoName, desired := range c.expected {
+				if actual[seoName] != desired {
+					t.Errorf("The priority of %v is %v, but want %v", seoName, actual[seoName], desired)
+				}
+			}
+		})
+	}
+}
+
+func TestCollection_RemoveSEO(t *testing.T) {
+	cases := []struct {
+		name       string
+		collection *Collection
+		expected   *Collection
+	}{{
+		name: "test remove seo",
+		collection: func() *Collection {
+			collection := NewCollection()
+			collection.RegisterSEO("Parent1").AddChildren(
+				collection.RegisterSEO("Son1"),
+				collection.RegisterSEO("Son2"),
+			)
+			collection.RemoveSEO("Parent1")
+			return collection
+		}(),
+		expected: func() *Collection {
+			collection := NewCollection()
+			collection.RegisterMultipleSEO("Son1", "Son2")
+			return collection
+		}(),
+	}}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			actual := c.collection
+			expected := c.expected
+			if len(actual.registeredSEO) != len(expected.registeredSEO) {
+				t.Errorf("The length is not equal")
+			}
+			for _, desired := range expected.registeredSEO {
+				if seo := actual.GetSEOByName(desired.name); seo == nil {
+					t.Errorf("not found seo %v in actual", desired.name)
+				} else {
+					if seo.parent == nil {
+						if desired.parent != nil {
+							t.Errorf("actual parent is nil, expected: %s", desired.parent.name)
+						}
+					} else {
+						if seo.parent.name != desired.parent.name {
+							t.Errorf("actual parent is %s, expected: %s", seo.parent.name, desired.parent.name)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestCollection_GetListingOrders(t *testing.T) {
+
+	cases := []struct {
+		name       string
+		collection *Collection
+		expected   *SEO
+	}{
+		{
+			name: "test_get_listing_orders",
+			collection: func() *Collection {
+				collection := NewCollection()
+				collection.RegisterSEO("PLP").AddChildren(
+					collection.RegisterSEO("Region"),
+					collection.RegisterSEO("City"),
+					collection.RegisterSEO("Prefecture"),
+				)
+				collection.RegisterMultipleSEO("Post", "Product")
+				return collection
+			}(),
+			expected: nil,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fmt.Println(c.collection.GetListingOrders())
+		})
+	}
 }

@@ -12,7 +12,7 @@ import (
 // @snippet_begin(SeoExample)
 var SeoCollection *seo.Collection
 
-func ConfigureSeo(b *presets.Builder, db *gorm.DB) {
+func ConfigureSeo(b *presets.Builder, db *gorm.DB) *presets.ModelBuilder {
 	SeoCollection = seo.NewCollection()
 	SeoCollection.RegisterSEO(&models.Post{}).RegisterContextVariables(
 		"Title",
@@ -24,7 +24,7 @@ func ConfigureSeo(b *presets.Builder, db *gorm.DB) {
 		},
 	).RegisterSettingVaribles(struct{ Test string }{})
 	SeoCollection.RegisterSEOByNames("Product", "Announcement")
-	SeoCollection.Configure(b, db)
+	return SeoCollection.Configure(b, db)
 }
 
 // @snippet_end

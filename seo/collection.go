@@ -2,6 +2,7 @@ package seo
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -16,9 +17,9 @@ import (
 )
 
 var (
-	GlobalSEO    = "Global SEO"
-	GlobalDB     *gorm.DB
-	DBContextKey contextKey = "DB"
+	GlobalSEOName = "Global SEO"
+	GlobalDB      *gorm.DB
+	DBContextKey  contextKey = "DB"
 )
 
 type (
@@ -29,13 +30,14 @@ type (
 // NewCollection creates a new SeoCollection instance
 func NewCollection() *Collection {
 	collection := &Collection{
-		settingModel: &QorSEOSetting{},
-		dbContextKey: DBContextKey,
-		globalName:   GlobalSEO,
-		inherited:    true,
+		settingModel:  &QorSEOSetting{},
+		dbContextKey:  DBContextKey,
+		globalName:    GlobalSEOName,
+		inherited:     true,
+		registeredSEO: make(map[string]*SEO),
 	}
 
-	collection.RegisterSEO(GlobalSEO).RegisterSettingVaribles(struct{ SiteName string }{}).
+	collection.RegisterSEO(GlobalSEOName).RegisterSettingVaribles(struct{ SiteName string }{}).
 		RegisterContextVariables(
 			"og:url", func(_ interface{}, _ *Setting, req *http.Request) string {
 				return req.URL.String()
@@ -48,59 +50,30 @@ func NewCollection() *Collection {
 // Collection will hold registered seo configures and global setting definition and other configures
 // @snippet_begin(SeoCollectionDefinition)
 type Collection struct {
-	registeredSEO []*SEO
-	globalName    string                                                             // default name is GlobalSEO
+	// key == val.Name
+	registeredSEO map[string]*SEO
+	globalName    string                                                             // default name is GlobalSEOName
 	inherited     bool                                                               // default is true. the order is model seo setting, system seo setting, global seo setting
 	dbContextKey  interface{}                                                        // get db from context
-	settingModel  interface{}                                                        // db model
+	settingModel  QorSEOSettingInterface                                             // db model
 	afterSave     func(ctx context.Context, settingName string, locale string) error // hook called after saving
+
+	prioritiesCatches   map[string]int
+	listingOrderCatches map[string]int
 }
 
 // @snippet_end
-
-// SEO represents a seo object for a page
-// @snippet_begin(SeoDefinition)
-type SEO struct {
-	name             string
-	modelTyp         reflect.Type
-	contextVariables map[string]contextVariablesFunc // fetch context variables from request
-	settingVariables interface{}                     // fetch setting variables from db
-}
-
-// @snippet_end
-
-func (seo *SEO) SetModel(model interface{}) *SEO {
-	seo.modelTyp = reflect.Indirect(reflect.ValueOf(model)).Type()
-	return seo
-}
-
-// SetName set seo name
-func (seo *SEO) SetName(name string) *SEO {
-	seo.name = name
-	return seo
-}
-
-// RegisterContextVariables register context variables. the registered variables will be rendered to the page
-func (seo *SEO) RegisterContextVariables(key string, f contextVariablesFunc) *SEO {
-	if seo.contextVariables == nil {
-		seo.contextVariables = map[string]contextVariablesFunc{}
-	}
-	seo.contextVariables[key] = f
-	return seo
-}
-
-// RegisterSettingVaribles register a setting variable
-func (seo *SEO) RegisterSettingVaribles(setting interface{}) *SEO {
-	seo.settingVariables = setting
-	return seo
-}
 
 func (collection *Collection) SetGlobalName(name string) *Collection {
+	globalSEO := collection.GetGlobalSEO()
+	globalSEO.SetName(name)
 	collection.globalName = name
-	if globalSeo := collection.GetSEOByName(GlobalSEO); globalSeo != nil {
-		globalSeo.SetName(name)
-	}
+	delete(collection.registeredSEO, GlobalSEOName)
 	return collection
+}
+
+func (collection *Collection) GetGlobalSEO() *SEO {
+	return collection.registeredSEO[collection.globalName]
 }
 
 func (collection *Collection) NewSettingModelInstance() interface{} {
@@ -119,7 +92,7 @@ func (collection *Collection) SetInherited(b bool) *Collection {
 	return collection
 }
 
-func (collection *Collection) SetSettingModel(s interface{}) *Collection {
+func (collection *Collection) SetSettingModel(s QorSEOSettingInterface) *Collection {
 	collection.settingModel = s
 	return collection
 }
@@ -130,76 +103,131 @@ func (collection *Collection) SetDBContextKey(key interface{}) *Collection {
 	return collection
 }
 
-// RegisterSEOByNames registers multiple SEOs at once through name
 func (collection *Collection) RegisterSEOByNames(names ...string) *Collection {
-	for index := range names {
-		collection.registeredSEO = append(collection.registeredSEO, &SEO{name: names[index]})
+	for _, name := range names {
+		collection.RegisterSEO(name)
 	}
 	return collection
 }
 
-// RegisterSEO registers a seo through name or model
-func (collection *Collection) RegisterSEO(obj interface{}) (seo *SEO) {
-	if name, ok := obj.(string); ok {
-		seo = &SEO{name: name}
-	} else {
-		typ := reflect.Indirect(reflect.ValueOf(obj)).Type()
-		seo = &SEO{name: typ.Name(), modelTyp: typ}
+// RegisterMultipleSEO registers multiple SEOs.
+// It calls RegisterSEO to accomplish the functionality.
+func (collection *Collection) RegisterMultipleSEO(objs ...interface{}) []*SEO {
+	seos := make([]*SEO, 0, len(objs))
+	for _, obj := range objs {
+		seos = append(seos, collection.RegisterSEO(obj))
 	}
+	return seos
+}
 
-	collection.registeredSEO = append(collection.registeredSEO, seo)
+// RegisterSEO registers a seo through name or model.
+// If an SEO already exists, it will panic.
+// The obj parameter can be of type string or a struct type that nested Setting.
+// The default parent of the registered SEO is GlobalSEO. If you need to set
+// its parent, Please call the SetParent method of SEO  after invoking RegisterSEO method.
+// For Example: collection.RegisterSEO(&Region{}).SetParent(parent)
+func (collection *Collection) RegisterSEO(obj interface{}) (seo *SEO) {
+	if obj == nil {
+		panic("cannot register nil seo, seo must be of type string or struct type that nested Setting")
+	}
+	seoName := GetSEOName(obj)
+	collection.GetSEOByName(seoName)
+	if _, isExist := collection.registeredSEO[seoName]; isExist {
+		panic(fmt.Sprintf("The %v seo already exists!", seoName))
+	}
+	// default parent is Global SEO
+	globalSEO := collection.GetGlobalSEO()
+	seo = &SEO{name: seoName}
+	seo.SetParent(globalSEO)
+	if _, ok := obj.(string); !ok { // for model seo
+		seo.modelTyp = reflect.Indirect(reflect.ValueOf(obj)).Type()
+		isSettingNested := false
+		if value := reflect.Indirect(reflect.ValueOf(obj)); value.IsValid() && value.Kind() == reflect.Struct {
+			for i := 0; i < value.NumField(); i++ {
+				if value.Field(i).Type() == reflect.TypeOf(Setting{}) {
+					isSettingNested = true
+					seo.modelTyp = value.Type()
+					break
+				}
+			}
+		}
+		if !isSettingNested {
+			panic("seo must be of type string or struct type that nested Setting")
+		}
+	}
+	collection.registeredSEO[seoName] = seo
 	return
 }
 
-// RemoveSEO removes the specified seo
+// RemoveSEO removes the specified seo,
+// if the seo has children, the parent of the children will
+// be the parent of the seo
 func (collection *Collection) RemoveSEO(obj interface{}) *Collection {
-	var name string
-	if n, ok := obj.(string); ok {
-		name = n
-	} else {
-		name = reflect.Indirect(reflect.ValueOf(obj)).Type().Name()
+	seoToBeRemoved := collection.GetSEO(obj)
+	if seoToBeRemoved == nil {
+		return collection
 	}
-
-	for index, s := range collection.registeredSEO {
-		if s.name == name {
-			collection.registeredSEO = append(collection.registeredSEO[:index], collection.registeredSEO[index+1:]...)
-			break
-		}
-	}
-
+	seoToBeRemoved.RemoveSelf()
+	delete(collection.registeredSEO, seoToBeRemoved.name)
 	return collection
 }
 
 // GetSEO gets the specified SEO by name or model.
 // It calls methods GetSEOByName and GetSEOByModel to realize its functionality.
 func (collection *Collection) GetSEO(obj interface{}) *SEO {
-	if name, ok := obj.(string); ok {
-		return collection.GetSEOByName(name)
-	} else {
-		return collection.GetSEOByModel(obj)
-	}
+	name := GetSEOName(obj)
+	return collection.GetSEOByName(name)
 }
 
-// GetSEOByName gets the specified SEO by name
+// GetSEOByName gets the specified SEO by the name.
 func (collection *Collection) GetSEOByName(name string) *SEO {
-	for _, s := range collection.registeredSEO {
-		if s.name == name {
-			return s
-		}
-	}
-
-	return nil
+	return collection.registeredSEO[name]
 }
 
-// GetSEOByModel gets a seo by model
+// GetSEOByModel gets a seo by model,
 func (collection *Collection) GetSEOByModel(model interface{}) *SEO {
-	for _, s := range collection.registeredSEO {
-		if reflect.Indirect(reflect.ValueOf(model)).Type() == s.modelTyp {
-			return s
+	name := GetSEOName(model)
+	return collection.GetSEOByName(name)
+}
+
+// GetSEOPriorities gets the priorities of all SEOs, with higher number
+// indicating higher priority. The priority of Global SEO is 1 (the lowest priority)
+func (collection *Collection) GetSEOPriorities() map[string]int {
+	res := make(map[string]int)
+	var dfs func(seo *SEO) int
+	dfs = func(seo *SEO) int {
+		if seo == nil {
+			return 0
+		}
+		if _, ok := res[seo.name]; ok {
+			return res[seo.name]
+		}
+		res[seo.name] = dfs(seo.parent) + 1
+		return res[seo.name]
+	}
+	for _, seo := range collection.registeredSEO {
+		dfs(seo)
+	}
+	return res
+}
+
+func (collection *Collection) GetListingOrders() map[string]int {
+	listingOrders := make(map[string]int)
+	globalSEO := collection.GetGlobalSEO()
+	order := 0
+	var dfs func(root *SEO)
+	dfs = func(seo *SEO) {
+		if seo == nil {
+			return
+		}
+		listingOrders[seo.name] = order
+		order++
+		for _, child := range seo.children {
+			dfs(child)
 		}
 	}
-
-	return nil
+	dfs(globalSEO)
+	return listingOrders
 }
 
 // AfterSave sets the hook called after saving
@@ -209,12 +237,12 @@ func (collection *Collection) AfterSave(v func(ctx context.Context, settingName 
 }
 
 // RenderGlobal renders global SEO
-func (collection Collection) RenderGlobal(req *http.Request) h.HTMLComponent {
+func (collection *Collection) RenderGlobal(req *http.Request) h.HTMLComponent {
 	return collection.Render(collection.globalName, req)
 }
 
 // Render render seo tags
-func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLComponent {
+func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	var (
 		db               = collection.getDBFromContext(req.Context())
 		sortedSEOs       []*SEO
@@ -226,7 +254,7 @@ func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLCo
 	)
 
 	// sort all SEOs
-	globalSeo := collection.GetSEO(collection.globalName)
+	globalSeo := collection.GetGlobalSEO()
 	if globalSeo == nil {
 		return h.RawHTML("")
 	}
@@ -236,9 +264,11 @@ func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLCo
 	if name, ok := obj.(string); !ok || name != collection.globalName {
 		if seo := collection.GetSEO(obj); seo != nil {
 			sortedSeoNames = append(sortedSeoNames, seo.name)
+			// global seo -- model seo
 			sortedSEOs = append(sortedSEOs, seo)
 		}
 	}
+	// system seo name -- global seo name
 	sortedSeoNames = append(sortedSeoNames, globalSeo.name)
 
 	if v, ok := obj.(l10n.L10nInterface); ok {
@@ -256,6 +286,7 @@ func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLCo
 	for _, name := range sortedSeoNames {
 		for i := 0; i < reflectValue.Len(); i++ {
 			if modelSetting, ok := reflectValue.Index(i).Interface().(QorSEOSettingInterface); ok && modelSetting.GetName() == name {
+				// model seo name -- global seo name
 				sortedDBSettings = append(sortedDBSettings, modelSetting)
 			}
 		}
@@ -276,6 +307,7 @@ func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLCo
 	}
 
 	for _, s := range sortedDBSettings {
+		// instance seo -- model seo -- global seo
 		sortedSettings = append(sortedSettings, s.GetSEOSetting())
 	}
 
@@ -357,7 +389,7 @@ func (collection Collection) Render(obj interface{}, req *http.Request) h.HTMLCo
 }
 
 // getDBFromContext get the db from the ctx
-func (collection Collection) getDBFromContext(ctx context.Context) *gorm.DB {
+func (collection *Collection) getDBFromContext(ctx context.Context) *gorm.DB {
 	if ctxDB := ctx.Value(collection.dbContextKey); ctxDB != nil {
 		return ctxDB.(*gorm.DB)
 	}
@@ -403,4 +435,16 @@ func isAbsoluteURL(str string) bool {
 
 func ContextWithDB(ctx context.Context, db *gorm.DB) context.Context {
 	return context.WithValue(ctx, DBContextKey, db)
+}
+
+// GetSEOName return the seo name.
+// if obj is of type string, its literal value is returned,
+// if obj is of any other type, the name of its type is returned.
+func GetSEOName(obj interface{}) string {
+	switch res := obj.(type) {
+	case string:
+		return res
+	default:
+		return reflect.Indirect(reflect.ValueOf(obj)).Type().Name()
+	}
 }
