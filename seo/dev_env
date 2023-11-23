@@ -1,0 +1,1 @@
+export DBURL="user=blog password=123 dbname=blog_dev sslmode=disable host=localhost port=7890"
