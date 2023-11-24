@@ -49,7 +49,7 @@ func pageFunc1(ctx *web.EventContext) (web.PageResponse, error) {
 		Dense(true).
 		Hoverable(true).
 		Children(
-		// h.Template().Attr("v-slot:append","{item}").Children(
+		// h.Template().Attr("v-slot:append","{item}").AppendChildren(
 		// 	)
 		)
 	return web.PageResponse{

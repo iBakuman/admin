@@ -127,7 +127,7 @@ func (vc *ViewCommon) PasswordInput(
 // 		Attr(":loading", fmt.Sprintf(`!!vars.%s`, passVar)).
 // 		On("input", fmt.Sprintf(`vars.%s = vars.%s ? zxcvbn(vars.%s).score + 1 : 0`, meterScoreVar, passVar, passVar))
 // 	return Div(
-// 		in.Children(
+// 		in.AppendChildren(
 // 			RawHTML(fmt.Sprintf(`
 //         <template v-slot:progress>
 //           <v-progress-linear

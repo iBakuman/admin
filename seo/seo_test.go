@@ -17,10 +17,10 @@ func TestSEO_AddChildren(t *testing.T) {
 				node1 := &SEO{name: "Node1"}
 				node2 := &SEO{name: "Node2"}
 				node3 := &SEO{name: "Node3"}
-				rootSeo.AddChildren(node1, node2)
-				node2.AddChildren(node3)
+				rootSeo.AppendChildren(node1, node2)
+				node2.AppendChildren(node3)
 				// add self as child
-				node2.AddChildren(node2)
+				node2.AppendChildren(node2)
 				return rootSeo
 			}(),
 			expected: [][]string{{"Root"}, {"Node1", "Node2"}, {"nil", "Node3"}, {"nil"}},
@@ -32,7 +32,7 @@ func TestSEO_AddChildren(t *testing.T) {
 				var nilSeo *SEO
 				node1 := &SEO{name: "Node1"}
 				node2 := &SEO{name: "Node2"}
-				rootSeo.AddChildren(node1.AddChildren(node2), nilSeo)
+				rootSeo.AppendChildren(node1.AppendChildren(node2), nilSeo)
 				return rootSeo
 			}(),
 			expected: [][]string{{"Root"}, {"Node1"}, {"Node2"}, {"nil"}},
@@ -59,7 +59,7 @@ func TestSEO_RemoveSelf(t *testing.T) {
 				node2 := &SEO{name: "level1-2"}
 				node3 := &SEO{name: "level2-1"}
 				node4 := &SEO{name: "level2-2"}
-				seoRoot.AddChildren(node1.AddChildren(node3, node4), node2)
+				seoRoot.AppendChildren(node1.AppendChildren(node3, node4), node2)
 				node1.RemoveSelf()
 				return seoRoot
 			}(),

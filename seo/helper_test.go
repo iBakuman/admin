@@ -8,10 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type TestQorSEOSetting struct {
-	QorSEOSetting
-}
-
 func init() {
 	// TODO: RESET
 	// if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
@@ -20,7 +16,6 @@ func init() {
 	} else {
 		GlobalDB = db
 	}
-	GlobalDB.AutoMigrate(&TestQorSEOSetting{})
 }
 
 // @snippet_begin(SeoModelExample)
@@ -32,7 +27,7 @@ type Product struct {
 // @snippet_end
 
 func resetDB() {
-	GlobalDB.Exec("truncate test_qor_seo_settings;")
+	GlobalDB.Exec("truncate qor_seo_settings;")
 }
 
 func metaEqual(got, want string) bool {

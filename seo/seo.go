@@ -26,16 +26,16 @@ type SEO struct {
 
 // @snippet_end
 
-// AddChildren Set the parent of each child in the children to current seo.
+// AppendChildren Set the parent of each child in the children to current seo.
 // Usage:
-// collection.RegisterSEO(father).AddChildren(
+// collection.RegisterSEO(father).AppendChildren(
 //
 //	collection.RegisterSEO(son1),
 //	collection.RegisterSEO(son2),
 //	collection.RegisterSEO(son3),
 //
 // )
-func (seo *SEO) AddChildren(children ...*SEO) *SEO {
+func (seo *SEO) AppendChildren(children ...*SEO) *SEO {
 	if seo == nil {
 		return seo
 	}
@@ -133,12 +133,8 @@ func (seo *SEO) RegisterContextVariables(key string, f contextVariablesFunc) *SE
 	return seo
 }
 
-// RegisterSettingVaribles register a setting variable
-func (seo *SEO) RegisterSettingVaribles(setting interface{}) *SEO {
+// RegisterSettingVariables register a setting variable
+func (seo *SEO) RegisterSettingVariables(setting interface{}) *SEO {
 	seo.settingVariables = setting
 	return seo
-}
-
-func NewSEO(obj interface{}) *SEO {
-	return &SEO{name: GetSEOName(obj)}
 }

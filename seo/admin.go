@@ -30,8 +30,8 @@ const (
 
 var permVerifier *perm.Verifier
 
-func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) (pm *presets.ModelBuilder) {
-	if err := db.AutoMigrate(collection.settingModel); err != nil {
+func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB) (pm *presets.ModelBuilder) {
+	if err := db.AutoMigrate(&QorSEOSetting{}); err != nil {
 		panic(err)
 	}
 
@@ -39,9 +39,9 @@ func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) (pm *pr
 		GlobalDB = db
 	}
 
-	b.GetWebBuilder().RegisterEventFunc(saveEvent, collection.save)
+	pb.GetWebBuilder().RegisterEventFunc(saveEvent, b.save)
 
-	pm = b.Model(collection.settingModel).PrimaryField("Name").Label("SEO")
+	pm = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO")
 	// Configure Listing Page
 	{
 
@@ -58,18 +58,34 @@ func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) (pm *pr
 		pml.Field("Name").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
 			seo := obj.(*QorSEOSetting)
 			icon := "folder"
-			seoToPriorities := collection.GetSEOPriorities()
+			priority := b.GetSEOPriority(seo.Name)
+			// listingOrders := collection.SortSEOs()
 			return h.Td(
 				h.Div(
 					VIcon(icon).Small(true).Class("mb-1"),
 					h.Text(seo.Name),
-				).Style(fmt.Sprintf("padding-left: %dpx;", 32*seoToPriorities[seo.Name])),
+				).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
 			)
 		})
 
 		oldSearcher := pml.Searcher
 		pml.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
+			// msgr      := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
+			db := b.getDBFromContext(ctx.R.Context())
+			locale, _ := l10n.IsLocalizableFromCtx(ctx.R.Context())
+			for name := range b.registeredSEO {
+				var modelSetting QorSEOSetting
+				err := db.Where("name = ? AND locale_code = ?", name, locale).First(&modelSetting).Error
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					modelSetting.Name = name
+					modelSetting.SetLocale(locale)
+					if err := db.Save(&modelSetting).Error; err != nil {
+						panic(err)
+					}
+				}
+			}
 			r, totalCount, err = oldSearcher(model, params, ctx)
+			b.SortSEOs(r.([]*QorSEOSetting))
 			return
 		})
 	}
@@ -80,17 +96,17 @@ func (collection *Collection) Configure(b *presets.Builder, db *gorm.DB) (pm *pr
 	// )
 	// pm.Listing().PageFunc(collection.pageFunc)
 	// pm = b.Model(collection.settingModel).Label("SEO")
-	b.FieldDefaults(presets.WRITE).
+	pb.FieldDefaults(presets.WRITE).
 		FieldType(Setting{}).
-		ComponentFunc(collection.EditingComponentFunc).
+		ComponentFunc(b.EditingComponentFunc).
 		SetterFunc(EditSetterFunc)
 
-	b.I18n().
+	pb.I18n().
 		RegisterForModule(language.English, I18nSeoKey, Messages_en_US).
 		RegisterForModule(language.SimplifiedChinese, I18nSeoKey, Messages_zh_CN)
 
-	b.ExtraAsset("/vue-seo.js", "text/javascript", SeoJSComponentsPack())
-	permVerifier = perm.NewVerifier("seo", b.GetPermission())
+	pb.ExtraAsset("/vue-seo.js", "text/javascript", SeoJSComponentsPack())
+	permVerifier = perm.NewVerifier("seo", pb.GetPermission())
 	return
 }
 
@@ -127,16 +143,16 @@ func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.Event
 	return reflectutils.Set(obj, field.Name, setting)
 }
 
-func (collection *Collection) EditingComponentFunc(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
 	var (
 		msgr        = i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
 		fieldPrefix string
 		setting     Setting
-		db          = collection.getDBFromContext(ctx.R.Context())
+		db          = b.getDBFromContext(ctx.R.Context())
 		locale, _   = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
 
-	seo := collection.GetSEOByModel(obj)
+	seo := b.GetSEO(obj)
 	if seo == nil {
 		return h.Div()
 	}
@@ -149,18 +165,9 @@ func (collection *Collection) EditingComponentFunc(obj interface{}, field *prese
 		}
 	}
 	if !setting.EnabledCustomize && setting.IsEmpty() {
-		modelSetting := collection.NewSettingModelInstance().(QorSEOSettingInterface)
+		modelSetting := &QorSEOSetting{}
 		db.Where("name = ? AND locale_code = ?", seo.name, locale).First(modelSetting)
-		setting.Title = modelSetting.GetTitle()
-		setting.Description = modelSetting.GetDescription()
-		setting.Keywords = modelSetting.GetKeywords()
-		setting.OpenGraphTitle = modelSetting.GetOpenGraphTitle()
-		setting.OpenGraphDescription = modelSetting.GetOpenGraphDescription()
-		setting.OpenGraphURL = modelSetting.GetOpenGraphURL()
-		setting.OpenGraphType = modelSetting.GetOpenGraphType()
-		setting.OpenGraphImageURL = modelSetting.GetOpenGraphImageURL()
-		setting.OpenGraphImageFromMediaLibrary = modelSetting.GetOpenGraphImageFromMediaLibrary()
-		setting.OpenGraphMetadata = modelSetting.GetOpenGraphMetadata()
+		setting = modelSetting.Setting
 	}
 
 	hideActions := false
@@ -189,7 +196,7 @@ func (collection *Collection) EditingComponentFunc(obj interface{}, field *prese
 						Attr("@click", "locals.enabledCustomize=!locals.enabledCustomize;$refs.switchComp.$emit('change', locals.enabledCustomize)"),
 					VExpansionPanelContent(
 						VCardText(
-							collection.vseo(fieldPrefix, seo, &setting, ctx.R),
+							b.vseo(fieldPrefix, seo, &setting, ctx.R),
 						),
 					).Eager(true),
 				),
@@ -199,19 +206,19 @@ func (collection *Collection) EditingComponentFunc(obj interface{}, field *prese
 		VSlot("{ locals }")
 }
 
-func (collection *Collection) pageFunc(ctx *web.EventContext) (_ web.PageResponse, err error) {
+func (b *Builder) pageFunc(ctx *web.EventContext) (_ web.PageResponse, err error) {
 	var (
 		msgr      = i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
-		db        = collection.getDBFromContext(ctx.R.Context())
+		db        = b.getDBFromContext(ctx.R.Context())
 		locale, _ = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
 
 	var seoComponents h.HTMLComponents
-	for _, seo := range collection.registeredSEO {
-		modelSetting := collection.NewSettingModelInstance().(QorSEOSettingInterface)
+	for _, seo := range b.registeredSEO {
+		modelSetting := &QorSEOSetting{}
 		err := db.Where("name = ? AND locale_code = ?", seo.name, locale).First(modelSetting).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			modelSetting.SetName(seo.name)
+			modelSetting.Name = seo.name
 			modelSetting.SetLocale(locale)
 			if err := db.Save(modelSetting).Error; err != nil {
 				panic(err)
@@ -221,7 +228,7 @@ func (collection *Collection) pageFunc(ctx *web.EventContext) (_ web.PageRespons
 		var variablesComps h.HTMLComponents
 		if seo.settingVariables != nil {
 			variables := reflect.Indirect(reflect.New(reflect.Indirect(reflect.ValueOf(seo.settingVariables)).Type()))
-			variableValues := modelSetting.GetVariables()
+			variableValues := modelSetting.Variables
 			for i := 0; i < variables.NumField(); i++ {
 				fieldName := variables.Type().Field(i).Name
 				if variableValues[fieldName] != "" {
@@ -242,11 +249,11 @@ func (collection *Collection) pageFunc(ctx *web.EventContext) (_ web.PageRespons
 
 		var (
 			label       string
-			setting     = modelSetting.GetSEOSetting()
+			setting     = modelSetting.Setting
 			loadingName = strings.ReplaceAll(strings.ToLower(seo.name), " ", "_")
 		)
 
-		if seo.name == collection.globalName {
+		if seo.name == b.globalName {
 			label = msgr.GlobalName
 		} else {
 			label = i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo", seo.name)
@@ -257,7 +264,7 @@ func (collection *Collection) pageFunc(ctx *web.EventContext) (_ web.PageRespons
 			VExpansionPanelContent(
 				VCardText(
 					variablesComps,
-					collection.vseo(modelSetting.GetName(), seo, &setting, ctx.R),
+					b.vseo(modelSetting.Name, seo, &setting, ctx.R),
 				),
 				VCardActions(
 					VSpacer(),
@@ -296,16 +303,16 @@ func (collection *Collection) pageFunc(ctx *web.EventContext) (_ web.PageRespons
 	}, nil
 }
 
-func (collection *Collection) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http.Request) h.HTMLComponent {
+func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http.Request) h.HTMLComponent {
 	var (
 		seos []*SEO
 		msgr = i18n.MustGetModuleMessages(req, I18nSeoKey, Messages_en_US).(*Messages)
-		db   = collection.getDBFromContext(req.Context())
+		db   = b.getDBFromContext(req.Context())
 	)
-	if seo.name == collection.globalName {
+	if seo.name == b.globalName {
 		seos = append(seos, seo)
 	} else {
-		seos = append(seos, collection.GetSEO(collection.globalName), seo)
+		seos = append(seos, b.GetSEO(b.globalName), seo)
 	}
 
 	var (
@@ -401,11 +408,11 @@ func (collection *Collection) vseo(fieldPrefix string, seo *SEO, setting *Settin
 	).Attr("ref", "seo")
 }
 
-func (collection *Collection) save(ctx *web.EventContext) (r web.EventResponse, err error) {
+func (b *Builder) save(ctx *web.EventContext) (r web.EventResponse, err error) {
 	var (
-		db        = collection.getDBFromContext(ctx.R.Context())
+		db        = b.getDBFromContext(ctx.R.Context())
 		name      = ctx.R.FormValue("name")
-		setting   = collection.NewSettingModelInstance().(QorSEOSettingInterface)
+		setting   = &QorSEOSetting{}
 		locale, _ = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
 
@@ -456,7 +463,7 @@ func (collection *Collection) save(ctx *web.EventContext) (r web.EventResponse, 
 			settingVals[field] = ctx.R.Form.Get(fieldWithPrefix)
 		}
 	}
-	s := setting.GetSEOSetting()
+	s := setting.Setting
 	for k, v := range settingVals {
 		if k == "OpenGraphMetadataString" {
 			metadata := GetOpenGraphMetadata(v.(string))
@@ -472,15 +479,15 @@ func (collection *Collection) save(ctx *web.EventContext) (r web.EventResponse, 
 		}
 	}
 
-	setting.SetSEOSetting(s)
-	setting.SetVariables(variables)
+	setting.Setting = s
+	setting.Variables = variables
 	setting.SetLocale(locale)
 	if err = db.Save(setting).Error; err != nil {
 		return
 	}
 	r.VarsScript = fmt.Sprintf(`vars.seoSnackbarShow = true;vars.%s = false;`, ctx.R.FormValue("loadingName"))
-	if collection.afterSave != nil {
-		if err = collection.afterSave(ctx.R.Context(), name, locale); err != nil {
+	if b.afterSave != nil {
+		if err = b.afterSave(ctx.R.Context(), name, locale); err != nil {
 			return
 		}
 	}

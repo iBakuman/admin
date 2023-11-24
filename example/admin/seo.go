@@ -10,10 +10,10 @@ import (
 )
 
 // @snippet_begin(SeoExample)
-var SeoCollection *seo.Collection
+var SeoCollection *seo.Builder
 
 func ConfigureSeo(b *presets.Builder, db *gorm.DB) *presets.ModelBuilder {
-	SeoCollection = seo.NewCollection()
+	SeoCollection = seo.NewBuilder()
 	SeoCollection.RegisterSEO(&models.Post{}).RegisterContextVariables(
 		"Title",
 		func(object interface{}, _ *seo.Setting, _ *http.Request) string {
@@ -22,8 +22,8 @@ func ConfigureSeo(b *presets.Builder, db *gorm.DB) *presets.ModelBuilder {
 			}
 			return ""
 		},
-	).RegisterSettingVaribles(struct{ Test string }{})
-	SeoCollection.RegisterSEOByNames("Product", "Announcement")
+	).RegisterSettingVariables(struct{ Test string }{})
+	SeoCollection.RegisterMultipleSEO("Product", "Announcement")
 	return SeoCollection.Configure(b, db)
 }
 

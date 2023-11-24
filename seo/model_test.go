@@ -50,7 +50,7 @@ func TestSettingHTMLComponent(t *testing.T) {
 			},
 			tags: map[string]string{
 				"og:type":       "product",
-				"twiiter:image": "http://dev.qor5.com/product/1/twitter.jpg",
+				"twitter:image": "http://dev.qor5.com/product/1/twitter.jpg",
 			},
 			want: `
 			<title>title</title>
@@ -61,7 +61,7 @@ func TestSettingHTMLComponent(t *testing.T) {
 			<meta property='og:type' name='og:type' content='product'>
 			<meta property='og:image' name='og:image' content='http://dev.qor5.com/product/1/og.jpg'>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
-			<meta property='twiiter:image' name='twiiter:image' content='http://dev.qor5.com/product/1/twitter.jpg'>`,
+			<meta property='twitter:image' name='twitter:image' content='http://dev.qor5.com/product/1/twitter.jpg'>`,
 		},
 	}
 	for _, tt := range tests {

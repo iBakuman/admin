@@ -74,7 +74,7 @@ type Builder struct {
 	pageLayoutFunc    PageLayoutFunc
 	preview           http.Handler
 	images            http.Handler
-	seoCollection     *seo.Collection
+	seoCollection     *seo.Builder
 	imagesPrefix      string
 	defaultDevice     string
 	publishBtnColor   string
@@ -204,7 +204,7 @@ func (b *Builder) TemplateEnabled(v bool) (r *Builder) {
 	return b
 }
 
-func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder, activityB *activity.ActivityBuilder, publisher *publish.Builder, seoCollection *seo.Collection) (pm *presets.ModelBuilder) {
+func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder, activityB *activity.ActivityBuilder, publisher *publish.Builder, seoCollection *seo.Builder) (pm *presets.ModelBuilder) {
 	pb.I18n().
 		RegisterForModule(language.English, I18nPageBuilderKey, Messages_en_US).
 		RegisterForModule(language.SimplifiedChinese, I18nPageBuilderKey, Messages_zh_CN).
@@ -1298,7 +1298,7 @@ func createNote(db *gorm.DB, mb *presets.ModelBuilder) web.EventFunc {
 	}
 }
 
-func editSEODialog(db *gorm.DB, mb *presets.ModelBuilder, seoCollection *seo.Collection) web.EventFunc {
+func editSEODialog(db *gorm.DB, mb *presets.ModelBuilder, seoCollection *seo.Builder) web.EventFunc {
 	return func(ctx *web.EventContext) (r web.EventResponse, err error) {
 		paramID := ctx.R.FormValue(presets.ParamID)
 		obj := mb.NewModel()
@@ -1515,7 +1515,7 @@ func (b *Builder) ConfigSharedContainer(pb *presets.Builder, db *gorm.DB) (pm *p
 	//							Text(true).
 	//							Color("primary").Attr("@click",
 	//							web.Plaid().
-	//								EventFunc(actions.New).
+	//								EventFunc(actions.NewBuilder).
 	//								URL(builder.GetModelBuilder().Info().ListingHref()).
 	//								Go()),
 	//					),

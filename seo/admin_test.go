@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"testing"
 
 	"github.com/qor5/admin/l10n"
@@ -22,20 +21,21 @@ func TestAdmin(t *testing.T) {
 		server = httptest.NewServer(admin)
 	)
 
-	collection := NewCollection().SetSettingModel(&TestQorSEOSetting{}).RegisterSEOByNames("Product Detail", "Product")
-	collection.Configure(admin, GlobalDB)
+	builder := NewBuilder()
+	builder.RegisterMultipleSEO("Product Detail", "Product")
+	builder.Configure(admin, GlobalDB)
 	l10n_view.Configure(admin, GlobalDB, l10n.New().RegisterLocales("en", "en", "English"), nil)
 	// should create all seo setting in the first time
 	resetDB()
-	if req, err := http.Get(server.URL + "/admin/test-qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
+	if req, err := http.Get(server.URL + "/admin/qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {
 			t.Errorf("Setting page should be exist, status code is %v", req.StatusCode)
 		}
 
-		var seoSetting = collection.NewSettingModelSlice()
-		GlobalDB.Find(seoSetting, "name in (?)", []string{"Product Detail", "Product", collection.globalName})
+		var seoSetting []*QorSEOSetting
+		GlobalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", builder.globalName})
 
-		if reflect.Indirect(reflect.ValueOf(seoSetting)).Len() != 3 {
+		if len(seoSetting) != 3 {
 			t.Errorf("SEO Setting should be created successfully")
 		}
 	} else {
@@ -56,7 +56,7 @@ func TestAdmin(t *testing.T) {
 	mwriter.WriteField("Product.Keywords", keyword)
 	mwriter.Close()
 
-	req, err := http.DefaultClient.Post(server.URL+"/admin/test-qor-seo-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
+	req, err := http.DefaultClient.Post(server.URL+"/admin/qor-seo-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,13 +65,14 @@ func TestAdmin(t *testing.T) {
 		t.Errorf("Save should be processed successfully, status code is %v", req.StatusCode)
 	}
 
-	var seoSetting = collection.NewSettingModelInstance().(QorSEOSettingInterface)
-	err = GlobalDB.First(&seoSetting, "name = ?", "Product").Error
+	seoSetting := &QorSEOSetting{}
+	err = GlobalDB.First(seoSetting, "name = ?", "Product").Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Errorf("SEO Setting should be created successfully")
 	}
 
-	if seoSetting.GetSEOSetting().Title != title || seoSetting.GetSEOSetting().Description != description || seoSetting.GetSEOSetting().Keywords != keyword {
+	setting := seoSetting.Setting
+	if setting.Title != title || setting.Description != description || setting.Keywords != keyword {
 		t.Errorf("SEOSetting should be Save correctly, its value %#v", seoSetting)
 	}
 }

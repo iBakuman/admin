@@ -8,6 +8,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/qor5/admin/l10n"
@@ -27,36 +28,34 @@ type (
 	contextVariablesFunc func(interface{}, *Setting, *http.Request) string
 )
 
-// NewCollection creates a new SeoCollection instance
-func NewCollection() *Collection {
-	collection := &Collection{
-		settingModel:  &QorSEOSetting{},
+func NewBuilder() *Builder {
+	b := &Builder{
 		dbContextKey:  DBContextKey,
 		globalName:    GlobalSEOName,
 		inherited:     true,
 		registeredSEO: make(map[string]*SEO),
 	}
 
-	collection.RegisterSEO(GlobalSEOName).RegisterSettingVaribles(struct{ SiteName string }{}).
+	b.RegisterSEO(GlobalSEOName).RegisterSettingVariables(struct{ SiteName string }{}).
 		RegisterContextVariables(
 			"og:url", func(_ interface{}, _ *Setting, req *http.Request) string {
 				return req.URL.String()
 			},
 		)
 
-	return collection
+	return b
 }
 
-// Collection will hold registered seo configures and global setting definition and other configures
-// @snippet_begin(SeoCollectionDefinition)
-type Collection struct {
+// Builder will hold registered seo configures and global setting definition and other configures
+// @snippet_begin(SeoBuilderDefinition)
+type Builder struct {
 	// key == val.Name
 	registeredSEO map[string]*SEO
 	globalName    string                                                             // default name is GlobalSEOName
 	inherited     bool                                                               // default is true. the order is model seo setting, system seo setting, global seo setting
 	dbContextKey  interface{}                                                        // get db from context
-	settingModel  QorSEOSettingInterface                                             // db model
 	afterSave     func(ctx context.Context, settingName string, locale string) error // hook called after saving
+	l10n          *l10n.Builder
 
 	prioritiesCatches   map[string]int
 	listingOrderCatches map[string]int
@@ -64,60 +63,41 @@ type Collection struct {
 
 // @snippet_end
 
-func (collection *Collection) SetGlobalName(name string) *Collection {
-	globalSEO := collection.GetGlobalSEO()
+func (b *Builder) L10nBuilder(builder *l10n.Builder) *Builder {
+	b.l10n = builder
+	return b
+}
+func (b *Builder) SetGlobalName(name string) *Builder {
+	globalSEO := b.GetGlobalSEO()
 	globalSEO.SetName(name)
-	collection.globalName = name
-	delete(collection.registeredSEO, GlobalSEOName)
-	return collection
+	b.globalName = name
+	delete(b.registeredSEO, GlobalSEOName)
+	return b
 }
 
-func (collection *Collection) GetGlobalSEO() *SEO {
-	return collection.registeredSEO[collection.globalName]
+func (b *Builder) GetGlobalSEO() *SEO {
+	return b.registeredSEO[b.globalName]
 }
 
-func (collection *Collection) NewSettingModelInstance() interface{} {
-	return reflect.New(reflect.Indirect(reflect.ValueOf(collection.settingModel)).Type()).Interface()
-}
-
-func (collection *Collection) NewSettingModelSlice() interface{} {
-	sliceType := reflect.SliceOf(reflect.PtrTo(reflect.Indirect(reflect.ValueOf(collection.settingModel)).Type()))
-	slice := reflect.New(sliceType)
-	slice.Elem().Set(reflect.MakeSlice(sliceType, 0, 0))
-	return slice.Interface()
-}
-
-func (collection *Collection) SetInherited(b bool) *Collection {
-	collection.inherited = b
-	return collection
-}
-
-func (collection *Collection) SetSettingModel(s QorSEOSettingInterface) *Collection {
-	collection.settingModel = s
-	return collection
+func (b *Builder) SetInherited(inherited bool) *Builder {
+	b.inherited = inherited
+	return b
 }
 
 // SetDBContextKey sets the key to get db instance from context
-func (collection *Collection) SetDBContextKey(key interface{}) *Collection {
-	collection.dbContextKey = key
-	return collection
-}
-
-func (collection *Collection) RegisterSEOByNames(names ...string) *Collection {
-	for _, name := range names {
-		collection.RegisterSEO(name)
-	}
-	return collection
+func (b *Builder) SetDBContextKey(key interface{}) *Builder {
+	b.dbContextKey = key
+	return b
 }
 
 // RegisterMultipleSEO registers multiple SEOs.
 // It calls RegisterSEO to accomplish the functionality.
-func (collection *Collection) RegisterMultipleSEO(objs ...interface{}) []*SEO {
-	seos := make([]*SEO, 0, len(objs))
+func (b *Builder) RegisterMultipleSEO(objs ...interface{}) []*SEO {
+	SEOs := make([]*SEO, 0, len(objs))
 	for _, obj := range objs {
-		seos = append(seos, collection.RegisterSEO(obj))
+		SEOs = append(SEOs, b.RegisterSEO(obj))
 	}
-	return seos
+	return SEOs
 }
 
 // RegisterSEO registers a seo through name or model.
@@ -125,18 +105,18 @@ func (collection *Collection) RegisterMultipleSEO(objs ...interface{}) []*SEO {
 // The obj parameter can be of type string or a struct type that nested Setting.
 // The default parent of the registered SEO is GlobalSEO. If you need to set
 // its parent, Please call the SetParent method of SEO  after invoking RegisterSEO method.
-// For Example: collection.RegisterSEO(&Region{}).SetParent(parent)
-func (collection *Collection) RegisterSEO(obj interface{}) (seo *SEO) {
+// For Example: b.RegisterSEO(&Region{}).SetParent(parent)
+func (b *Builder) RegisterSEO(obj interface{}) (seo *SEO) {
 	if obj == nil {
 		panic("cannot register nil seo, seo must be of type string or struct type that nested Setting")
 	}
 	seoName := GetSEOName(obj)
-	collection.GetSEOByName(seoName)
-	if _, isExist := collection.registeredSEO[seoName]; isExist {
+	b.GetSEO(seoName)
+	if _, isExist := b.registeredSEO[seoName]; isExist {
 		panic(fmt.Sprintf("The %v seo already exists!", seoName))
 	}
 	// default parent is Global SEO
-	globalSEO := collection.GetGlobalSEO()
+	globalSEO := b.GetGlobalSEO()
 	seo = &SEO{name: seoName}
 	seo.SetParent(globalSEO)
 	if _, ok := obj.(string); !ok { // for model seo
@@ -155,114 +135,100 @@ func (collection *Collection) RegisterSEO(obj interface{}) (seo *SEO) {
 			panic("seo must be of type string or struct type that nested Setting")
 		}
 	}
-	collection.registeredSEO[seoName] = seo
+	b.registeredSEO[seoName] = seo
 	return
 }
 
 // RemoveSEO removes the specified seo,
 // if the seo has children, the parent of the children will
 // be the parent of the seo
-func (collection *Collection) RemoveSEO(obj interface{}) *Collection {
-	seoToBeRemoved := collection.GetSEO(obj)
+func (b *Builder) RemoveSEO(obj interface{}) *Builder {
+	seoToBeRemoved := b.GetSEO(obj)
 	if seoToBeRemoved == nil {
-		return collection
+		return b
 	}
 	seoToBeRemoved.RemoveSelf()
-	delete(collection.registeredSEO, seoToBeRemoved.name)
-	return collection
+	delete(b.registeredSEO, seoToBeRemoved.name)
+	return b
 }
 
-// GetSEO gets the specified SEO by name or model.
-// It calls methods GetSEOByName and GetSEOByModel to realize its functionality.
-func (collection *Collection) GetSEO(obj interface{}) *SEO {
+// GetSEO retrieves the specified SEO, It accepts two types of parameters.
+// One is a string, where the literal value of the parameter is the name of the SEO.
+// The other is an instance of a struct embedded with the Setting type, in which case
+// the seo name is obtained from the type name that is retrieved through reflection.
+// If no SEO with the specified name is found, it returns nil.
+func (b *Builder) GetSEO(obj interface{}) *SEO {
 	name := GetSEOName(obj)
-	return collection.GetSEOByName(name)
+	return b.registeredSEO[name]
 }
 
-// GetSEOByName gets the specified SEO by the name.
-func (collection *Collection) GetSEOByName(name string) *SEO {
-	return collection.registeredSEO[name]
-}
-
-// GetSEOByModel gets a seo by model,
-func (collection *Collection) GetSEOByModel(model interface{}) *SEO {
-	name := GetSEOName(model)
-	return collection.GetSEOByName(name)
-}
-
-// GetSEOPriorities gets the priorities of all SEOs, with higher number
-// indicating higher priority. The priority of Global SEO is 1 (the lowest priority)
-func (collection *Collection) GetSEOPriorities() map[string]int {
-	res := make(map[string]int)
-	var dfs func(seo *SEO) int
-	dfs = func(seo *SEO) int {
-		if seo == nil {
-			return 0
-		}
-		if _, ok := res[seo.name]; ok {
-			return res[seo.name]
-		}
-		res[seo.name] = dfs(seo.parent) + 1
-		return res[seo.name]
+// GetSEOPriority gets the priority of the specified seo,
+// with higher number indicating higher priority.
+// The priority of Global SEO is 1 (the lowest priority)
+func (b *Builder) GetSEOPriority(name string) int {
+	depth := 0
+	node := b.registeredSEO[name]
+	for node != nil {
+		node = node.parent
+		depth++
 	}
-	for _, seo := range collection.registeredSEO {
-		dfs(seo)
-	}
-	return res
+	return depth
 }
 
-func (collection *Collection) GetListingOrders() map[string]int {
-	listingOrders := make(map[string]int)
-	globalSEO := collection.GetGlobalSEO()
+func (b *Builder) SortSEOs(SEOs []*QorSEOSetting) {
+	m := make(map[string]int)
+	globalSEO := b.GetGlobalSEO()
 	order := 0
 	var dfs func(root *SEO)
 	dfs = func(seo *SEO) {
 		if seo == nil {
 			return
 		}
-		listingOrders[seo.name] = order
+		m[seo.name] = order
 		order++
 		for _, child := range seo.children {
 			dfs(child)
 		}
 	}
 	dfs(globalSEO)
-	return listingOrders
+	sort.Slice(SEOs, func(i, j int) bool {
+		return m[SEOs[i].Name] < m[SEOs[j].Name]
+	})
 }
 
 // AfterSave sets the hook called after saving
-func (collection *Collection) AfterSave(v func(ctx context.Context, settingName string, locale string) error) *Collection {
-	collection.afterSave = v
-	return collection
+func (b *Builder) AfterSave(v func(ctx context.Context, settingName string, locale string) error) *Builder {
+	b.afterSave = v
+	return b
 }
 
 // RenderGlobal renders global SEO
-func (collection *Collection) RenderGlobal(req *http.Request) h.HTMLComponent {
-	return collection.Render(collection.globalName, req)
+func (b *Builder) RenderGlobal(req *http.Request) h.HTMLComponent {
+	return b.Render(b.globalName, req)
 }
 
 // Render render seo tags
-func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLComponent {
+func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	var (
-		db               = collection.getDBFromContext(req.Context())
+		db               = b.getDBFromContext(req.Context())
 		sortedSEOs       []*SEO
 		sortedSeoNames   []string
-		sortedDBSettings []QorSEOSettingInterface
+		sortedDBSettings []*QorSEOSetting
 		sortedSettings   []Setting
 		setting          Setting
 		locale           string
 	)
 
 	// sort all SEOs
-	globalSeo := collection.GetGlobalSEO()
+	globalSeo := b.GetGlobalSEO()
 	if globalSeo == nil {
 		return h.RawHTML("")
 	}
 
 	sortedSEOs = append(sortedSEOs, globalSeo)
 
-	if name, ok := obj.(string); !ok || name != collection.globalName {
-		if seo := collection.GetSEO(obj); seo != nil {
+	if name, ok := obj.(string); !ok || name != b.globalName {
+		if seo := b.GetSEO(obj); seo != nil {
 			sortedSeoNames = append(sortedSeoNames, seo.name)
 			// global seo -- model seo
 			sortedSEOs = append(sortedSEOs, seo)
@@ -276,22 +242,22 @@ func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLC
 	}
 
 	// sort all QorSEOSettingInterface
-	var settingModelSlice = collection.NewSettingModelSlice()
-	if db.Find(settingModelSlice, "name in (?) AND locale_code = ?", sortedSeoNames, locale).Error != nil {
+	var settingModelSlice []*QorSEOSetting
+	if db.Find(&settingModelSlice, "name in (?) AND locale_code = ?", sortedSeoNames, locale).Error != nil {
 		return h.RawHTML("")
 	}
 
-	reflectValue := reflect.Indirect(reflect.ValueOf(settingModelSlice))
-
 	for _, name := range sortedSeoNames {
-		for i := 0; i < reflectValue.Len(); i++ {
-			if modelSetting, ok := reflectValue.Index(i).Interface().(QorSEOSettingInterface); ok && modelSetting.GetName() == name {
-				// model seo name -- global seo name
-				sortedDBSettings = append(sortedDBSettings, modelSetting)
+		for _, tSetting := range settingModelSlice {
+			if tSetting.Name == name {
+				sortedDBSettings = append(sortedDBSettings, tSetting)
 			}
 		}
 	}
 
+	// model {
+	// setting Setting
+	// }
 	// sort all settings
 	if _, ok := obj.(string); !ok {
 		if value := reflect.Indirect(reflect.ValueOf(obj)); value.IsValid() && value.Kind() == reflect.Struct {
@@ -308,12 +274,12 @@ func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLC
 
 	for _, s := range sortedDBSettings {
 		// instance seo -- model seo -- global seo
-		sortedSettings = append(sortedSettings, s.GetSEOSetting())
+		sortedSettings = append(sortedSettings, s.Setting)
 	}
 
 	// get the final setting from sortedSettings
 	for i, s := range sortedSettings {
-		if !collection.inherited && i >= 1 {
+		if !b.inherited && i >= 1 {
 			break
 		}
 
@@ -367,7 +333,7 @@ func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLC
 	)
 
 	for _, s := range sortedDBSettings {
-		for key, val := range s.GetVariables() {
+		for key, val := range s.Variables {
 			variables[key] = val
 		}
 	}
@@ -375,9 +341,9 @@ func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLC
 	for i, seo := range sortedSEOs {
 		for key, f := range seo.contextVariables {
 			value := f(obj, &setting, req)
-			if strings.Contains(key, ":") && collection.inherited {
+			if strings.Contains(key, ":") && b.inherited {
 				tags[key] = value
-			} else if strings.Contains(key, ":") && !collection.inherited && i == 0 {
+			} else if strings.Contains(key, ":") && !b.inherited && i == 0 {
 				tags[key] = value
 			} else {
 				variables[key] = f(obj, &setting, req)
@@ -389,8 +355,8 @@ func (collection *Collection) Render(obj interface{}, req *http.Request) h.HTMLC
 }
 
 // getDBFromContext get the db from the ctx
-func (collection *Collection) getDBFromContext(ctx context.Context) *gorm.DB {
-	if ctxDB := ctx.Value(collection.dbContextKey); ctxDB != nil {
+func (b *Builder) getDBFromContext(ctx context.Context) *gorm.DB {
+	if ctxDB := ctx.Value(b.dbContextKey); ctxDB != nil {
 		return ctxDB.(*gorm.DB)
 	}
 	return GlobalDB
