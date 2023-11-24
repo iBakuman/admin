@@ -77,7 +77,11 @@ func (setting *Setting) Scan(value interface{}) error {
 }
 
 // Value get value from struct, and save into database
-func (setting *Setting) Value() (driver.Value, error) {
+// Do not changed it to pointer receiver method, If you
+// change it to a pointer receiver, GORM may encounter
+// errors "cannot found encode plan" when operating the
+// qor_seo_settings table.
+func (setting Setting) Value() (driver.Value, error) {
 	result, err := json.Marshal(setting)
 	return string(result), err
 }
@@ -93,12 +97,12 @@ type Variables map[string]string
 
 // Scan scan value from database into struct
 func (setting *Variables) Scan(value interface{}) error {
-	if byteList, ok := value.([]byte); ok {
-		json.Unmarshal(byteList, setting)
+	if bytes, ok := value.([]byte); ok {
+		json.Unmarshal(bytes, setting)
 	} else if str, ok := value.(string); ok {
 		json.Unmarshal([]byte(str), setting)
-	} else if strList, ok := value.([]string); ok {
-		for _, str := range strList {
+	} else if strs, ok := value.([]string); ok {
+		for _, str := range strs {
 			json.Unmarshal([]byte(str), setting)
 		}
 	}
@@ -106,7 +110,11 @@ func (setting *Variables) Scan(value interface{}) error {
 }
 
 // Value get value from struct, and save into database
-func (setting *Variables) Value() (driver.Value, error) {
+// Do not changed it to pointer receiver method, If you
+// change it to a pointer receiver, GORM may encounter
+// errors "cannot found encode plan" when operating the
+// qor_seo_settings table.
+func (setting Variables) Value() (driver.Value, error) {
 	result, err := json.Marshal(setting)
 	return string(result), err
 }
