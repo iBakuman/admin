@@ -14,13 +14,11 @@ import (
 	h "github.com/theplant/htmlgo"
 )
 
-// QorSEOSetting default seo model
 type QorSEOSetting struct {
 	Name      string `gorm:"primary_key"`
 	Setting   Setting
 	Variables Variables `sql:"type:text"`
 
-	Path      string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time `gorm:"index"`
@@ -66,12 +64,12 @@ type OpenGraphMetadata struct {
 
 // Scan scan value from database into struct
 func (setting *Setting) Scan(value interface{}) error {
-	if byteList, ok := value.([]byte); ok {
-		json.Unmarshal(byteList, setting)
+	if bytes, ok := value.([]byte); ok {
+		json.Unmarshal(bytes, setting)
 	} else if str, ok := value.(string); ok {
 		json.Unmarshal([]byte(str), setting)
-	} else if strList, ok := value.([]string); ok {
-		for _, str := range strList {
+	} else if strs, ok := value.([]string); ok {
+		for _, str := range strs {
 			json.Unmarshal([]byte(str), setting)
 		}
 	}
