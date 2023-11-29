@@ -25,20 +25,6 @@ func TestBuilder_Render(t *testing.T) {
 		Variables: map[string]string{"SiteName": "Qor5 dev"},
 	}
 
-	newBuilderWithGlobalSEO := func() (*Builder, *SEO) {
-		builder := NewBuilder()
-		globalSEO := builder.RegisterSEO("Global SEO")
-		globalSEO.RegisterSettingVariables("SiteName").
-			RegisterPropFuncForOG(
-				&PropFunc{
-					Name: "og:url",
-					Func: func(_ interface{}, _ *Setting, req *http.Request) string {
-						return req.URL.String()
-					},
-				},
-			)
-		return builder, globalSEO
-	}
 	tests := []struct {
 		name      string
 		prepareDB func()
@@ -124,8 +110,8 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
-				builder.RegisterSEO(&Product{})
+				builder, globalSEO := newBuilderWithGlobalSEO()
+				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
 				return builder
 			}(),
 			obj: Product{
@@ -152,8 +138,8 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
-				builder.RegisterSEO(&Product{})
+				builder, globalSEO := newBuilderWithGlobalSEO()
+				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
 				return builder
 			}(),
 			obj: Product{
@@ -180,8 +166,8 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
-				builder.RegisterSEO(&Product{})
+				builder, globalSEO := newBuilderWithGlobalSEO()
+				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
 				return builder
 			}(),
 			obj: Product{
@@ -251,14 +237,14 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 		{
 			name: "case 1",
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder, globalSEO := newBuilderWithGlobalSEO()
 				builder.RegisterSEO("PLP").AppendChildren(
 					builder.RegisterSEO("Region"),
 					builder.RegisterSEO("City"),
 					builder.RegisterSEO("Prefecture"),
 				).AppendChildren(
 					builder.RegisterMultipleSEO("Post", "Product")...,
-				)
+				).SetParent(globalSEO)
 				return builder
 			}(),
 			expected: map[string]int{
@@ -381,4 +367,18 @@ func TestBuilder_SortSEOs(t *testing.T) {
 			}
 		})
 	}
+}
+func newBuilderWithGlobalSEO() (*Builder, *SEO) {
+	builder := NewBuilder()
+	globalSEO := builder.RegisterSEO("Global SEO")
+	globalSEO.RegisterSettingVariables("SiteName").
+		RegisterPropFuncForOG(
+			&PropFunc{
+				Name: "og:url",
+				Func: func(_ interface{}, _ *Setting, req *http.Request) string {
+					return req.URL.String()
+				},
+			},
+		)
+	return builder, globalSEO
 }

@@ -56,11 +56,17 @@ type SEO struct {
 
 // AppendChildren sets the parent of each child in the children to the current SEO.
 // Usage:
-// builder.RegisterSEO(father).AppendChildren(
+// builder.RegisterSEO(parent).AppendChildren(
 //
 //	builder.RegisterSEO(child1),
 //	builder.RegisterSEO(child2),
 //	builder.RegisterSEO(child3)
+//
+// )
+// Or:
+// builder.RegisterSEO(parent).AppendChildren(
+//
+//	builder.RegisterMultipleSEO(child1, child2, child3)
 //
 // )
 func (seo *SEO) AppendChildren(children ...*SEO) *SEO {
@@ -150,16 +156,6 @@ func (seo *SEO) RemoveSelf() *SEO {
 	return seo
 }
 
-func (seo *SEO) SetModel(model interface{}) *SEO {
-	seo.modelTyp = reflect.Indirect(reflect.ValueOf(model)).Type()
-	return seo
-}
-
-func (seo *SEO) SetName(name string) *SEO {
-	seo.name = name
-	return seo
-}
-
 type ContextVar struct {
 	Name string
 	Func contextVariablesFunc
@@ -238,7 +234,7 @@ func (seo *SEO) RegisterPropFuncForOG(propFuncs ...*PropFunc) *SEO {
 	return seo
 }
 
-func (seo *SEO) GetFinalPropFuncForOG() map[string]contextVariablesFunc {
+func (seo *SEO) getFinalPropFuncForOG() map[string]contextVariablesFunc {
 	if seo == nil {
 		return nil
 	}
@@ -249,7 +245,7 @@ func (seo *SEO) GetFinalPropFuncForOG() map[string]contextVariablesFunc {
 		for propName, propFunc := range seo.propFuncForOG {
 			seo.finalPropFuncForOGCache[propName] = propFunc
 		}
-		cacheOfParent := seo.parent.GetFinalPropFuncForOG()
+		cacheOfParent := seo.parent.getFinalPropFuncForOG()
 		for propName, propFunc := range cacheOfParent {
 			if _, isExist := seo.finalPropFuncForOGCache[propName]; !isExist {
 				seo.finalPropFuncForOGCache[propName] = propFunc
@@ -259,7 +255,7 @@ func (seo *SEO) GetFinalPropFuncForOG() map[string]contextVariablesFunc {
 	}
 }
 
-func (seo *SEO) GetAvailableVars() map[string]struct{} {
+func (seo *SEO) getAvailableVars() map[string]struct{} {
 	if seo == nil {
 		return nil
 	}
@@ -273,14 +269,14 @@ func (seo *SEO) GetAvailableVars() map[string]struct{} {
 		for varName := range seo.contextVars {
 			seo.finalAvailableVarsCache[varName] = struct{}{}
 		}
-		for varName, val := range seo.parent.GetAvailableVars() {
+		for varName, val := range seo.parent.getAvailableVars() {
 			seo.finalAvailableVarsCache[varName] = val
 		}
 		return seo.finalAvailableVarsCache
 	}
 }
 
-func (seo *SEO) Migrate(locales []string) {
+func (seo *SEO) migrate(locales []string) {
 	if seo == nil {
 		return
 	}
@@ -289,13 +285,16 @@ func (seo *SEO) Migrate(locales []string) {
 	// when the current node is the dummy node
 	if seo.parent != nil {
 		settings := make([]QorSEOSetting, 0, len(locales))
+		variables := make(map[string]string)
+		for varName := range seo.settingVars {
+			variables[varName] = ""
+		}
 		if len(locales) == 0 {
-			settings = append(settings, QorSEOSetting{Name: seo.name})
+			settings = append(settings, QorSEOSetting{
+				Name:      seo.name,
+				Variables: variables,
+			})
 		} else {
-			variables := make(map[string]string)
-			for varName := range seo.settingVars {
-				variables[varName] = ""
-			}
 			for _, locale := range locales {
 				settings = append(settings, QorSEOSetting{
 					Name:      seo.name,
@@ -312,17 +311,17 @@ func (seo *SEO) Migrate(locales []string) {
 	}
 
 	for _, child := range seo.children {
-		child.Migrate(locales)
+		child.migrate(locales)
 	}
 	return
 }
 
-func (seo *SEO) GetFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting {
+func (seo *SEO) getFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting {
 	if seo == nil || seo.name == "" {
 		return &QorSEOSetting{}
 	}
 	seoSetting := &QorSEOSetting{}
-	seoSettingOfParent := seo.parent.GetFinalQorSEOSetting(locale, db)
+	seoSettingOfParent := seo.parent.getFinalQorSEOSetting(locale, db)
 	err := db.Where("name = ? and locale_code = ?", seo.name, locale).First(seoSetting).Error
 	if err != nil {
 		panic(err)
@@ -374,7 +373,7 @@ func (seo *SEO) GetFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting
 	return seoSetting
 }
 
-func (seo *SEO) GetFinalContextVars() map[string]contextVariablesFunc {
+func (seo *SEO) getFinalContextVars() map[string]contextVariablesFunc {
 	if seo == nil {
 		return nil
 	}
@@ -385,7 +384,7 @@ func (seo *SEO) GetFinalContextVars() map[string]contextVariablesFunc {
 		for varName, varFunc := range seo.contextVars {
 			seo.finalContextVarsCache[varName] = varFunc
 		}
-		contextVarsOfParent := seo.parent.GetFinalContextVars()
+		contextVarsOfParent := seo.parent.getFinalContextVars()
 		for varName, varFunc := range contextVarsOfParent {
 			if _, isExist := seo.finalContextVarsCache[varName]; !isExist {
 				seo.finalContextVarsCache[varName] = varFunc

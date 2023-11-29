@@ -25,7 +25,7 @@ func TestAdmin(t *testing.T) {
 	builder.RegisterMultipleSEO("Product Detail", "Product")
 	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
 	builder.Configure(admin, GlobalDB, l10nBuilder)
-	l10n_view.Configure(admin, GlobalDB, GlobalL10n, nil)
+	l10n_view.Configure(admin, GlobalDB, l10nBuilder, nil)
 	if req, err := http.Get(server.URL + "/admin/qor-SEO-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {
 			t.Errorf("Setting page should be exist, status code is %v", req.StatusCode)

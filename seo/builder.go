@@ -19,7 +19,6 @@ import (
 
 var (
 	GlobalDB     *gorm.DB
-	GlobalL10n              = l10n.New()
 	DBContextKey contextKey = "DB"
 )
 
@@ -170,7 +169,6 @@ func (b *Builder) AfterSave(v func(ctx context.Context, settingName string, loca
 	return b
 }
 
-// Render render SEO tags
 func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	seo := b.GetSEO(obj)
 	if seo == nil {
@@ -183,7 +181,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	}
 
 	db := b.getDBFromContext(req.Context())
-	finalSeoSetting := seo.GetFinalQorSEOSetting(locale, db)
+	finalSeoSetting := seo.getFinalQorSEOSetting(locale, db)
 
 	// get setting
 	var setting Setting
@@ -207,7 +205,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	// replace placeholders
 	{
 		variables := finalSeoSetting.Variables
-		finalContextVars := seo.GetFinalContextVars()
+		finalContextVars := seo.getFinalContextVars()
 		// execute function for context var
 		for varName, varFunc := range finalContextVars {
 			variables[varName] = varFunc(obj, &setting, req)
@@ -227,7 +225,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 
 	ogProps := map[string]string{}
 	{
-		finalPropFuncForOG := seo.GetFinalPropFuncForOG()
+		finalPropFuncForOG := seo.getFinalPropFuncForOG()
 		for propName, propFunc := range finalPropFuncForOG {
 			ogProps[propName] = propFunc(obj, &setting, req)
 		}

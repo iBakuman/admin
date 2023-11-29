@@ -133,7 +133,7 @@ func TestSEO_RemoveSelf(t *testing.T) {
 	}
 }
 
-func TestSEO_Migrate(t *testing.T) {
+func TestSEO_migrate(t *testing.T) {
 	cases := []struct {
 		name      string
 		prepareDB func()
@@ -239,7 +239,7 @@ func TestSEO_Migrate(t *testing.T) {
 					panic(err)
 				}
 			}
-			c.dummyNode.Migrate(c.locales)
+			c.dummyNode.migrate(c.locales)
 			var seoSettings []*QorSEOSetting
 			GlobalDB.Select("name", "locale_code", "setting", "variables").Find(&seoSettings)
 			if len(seoSettings) != len(c.expected) {
@@ -505,11 +505,14 @@ func TestSEO_RegisterPropFuncForOG(t *testing.T) {
 				}
 			}()
 			_ = c.getSeoRoot()
+			if c.shouldPanic {
+				t.Errorf("The program should panic")
+			}
 		})
 	}
 }
 
-func TestSEO_GetFinalQorSEOSetting(t *testing.T) {
+func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 	cases := []struct {
 		name      string
 		prepareDB func()
@@ -577,7 +580,7 @@ func TestSEO_GetFinalQorSEOSetting(t *testing.T) {
 				c.prepareDB()
 			}
 			actual := &QorSEOSetting{}
-			seoSetting := c.seo.GetFinalQorSEOSetting("", GlobalDB)
+			seoSetting := c.seo.getFinalQorSEOSetting("", GlobalDB)
 			actual.Name = seoSetting.Name
 			actual.Setting = seoSetting.Setting
 			actual.Variables = seoSetting.Variables
@@ -589,7 +592,7 @@ func TestSEO_GetFinalQorSEOSetting(t *testing.T) {
 	}
 }
 
-func TestSEO_GetFinalContextVars(t *testing.T) {
+func TestSEO_getFinalContextVars(t *testing.T) {
 	ctxFunc1 := func(_ interface{}, _ *Setting, _ *http.Request) string {
 		return "ctxFunc1"
 	}
@@ -623,7 +626,7 @@ func TestSEO_GetFinalContextVars(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			contextVars := c.seo.GetFinalContextVars()
+			contextVars := c.seo.getFinalContextVars()
 			if len(contextVars) != len(c.expected) {
 				t.Errorf("The actual number of context vars is different from what was expected")
 			}
@@ -637,7 +640,7 @@ func TestSEO_GetFinalContextVars(t *testing.T) {
 	}
 }
 
-func TestSEO_GetFinalPropFuncForOG(t *testing.T) {
+func TestSEO_getFinalPropFuncForOG(t *testing.T) {
 	cases := []struct {
 		name     string
 		getSEO   func() *SEO
@@ -690,7 +693,7 @@ func TestSEO_GetFinalPropFuncForOG(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			seo := c.getSEO()
-			finalOgTag := seo.GetFinalPropFuncForOG()
+			finalOgTag := seo.getFinalPropFuncForOG()
 			if len(finalOgTag) != len(c.expected) {
 				t.Errorf("The number of og property is not equal to expectation")
 			}

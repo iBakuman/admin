@@ -119,7 +119,7 @@ func (setting Variables) Value() (driver.Value, error) {
 	return string(result), err
 }
 
-func (setting *Setting) HTMLComponent(tags map[string]string) h.HTMLComponent {
+func (setting *Setting) HTMLComponent(ogProps map[string]string) h.HTMLComponent {
 	openGraphData := map[string]string{
 		"og:title":       setting.OpenGraphTitle,
 		"og:description": setting.OpenGraphDescription,
@@ -134,7 +134,7 @@ func (setting *Setting) HTMLComponent(tags map[string]string) h.HTMLComponent {
 
 	for _, key := range []string{"og:title", "og:description", "og:url", "og:type", "og:image"} {
 		if v := openGraphData[key]; v == "" {
-			if v, ok := tags[key]; ok {
+			if v, ok := ogProps[key]; ok {
 				openGraphData[key] = v
 			}
 		}
@@ -144,7 +144,7 @@ func (setting *Setting) HTMLComponent(tags map[string]string) h.HTMLComponent {
 		openGraphData["og:type"] = "website"
 	}
 
-	for key, value := range tags {
+	for key, value := range ogProps {
 		if _, ok := openGraphData[key]; !ok {
 			openGraphData[key] = value
 		}
