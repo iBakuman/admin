@@ -10,21 +10,25 @@ import (
 )
 
 // @snippet_begin(SeoExample)
-var SeoCollection *seo.Builder
+var seoBuilder *seo.Builder
 
 func ConfigureSeo(b *presets.Builder, db *gorm.DB) *presets.ModelBuilder {
-	SeoCollection = seo.NewBuilder()
-	SeoCollection.RegisterSEO(&models.Post{}).RegisterContextVariables(
-		"Title",
-		func(object interface{}, _ *seo.Setting, _ *http.Request) string {
-			if article, ok := object.(models.Post); ok {
-				return article.Title
-			}
-			return ""
-		},
-	).RegisterSettingVariables(struct{ Test string }{})
-	SeoCollection.RegisterMultipleSEO("Product", "Announcement")
-	return SeoCollection.Configure(b, db)
+	seoBuilder = seo.NewBuilder()
+	seoBuilder.RegisterSEO(&models.Post{}).
+		RegisterContextVariables(
+			&seo.ContextVar{
+				Name: "Title",
+				Func: func(object interface{}, _ *seo.Setting, _ *http.Request) string {
+					if article, ok := object.(models.Post); ok {
+						return article.Title
+					}
+					return ""
+				},
+			},
+		).
+		RegisterSettingVariables("Test")
+	seoBuilder.RegisterMultipleSEO("Product", "Announcement")
+	return seoBuilder.Configure(b, db)
 }
 
 // @snippet_end

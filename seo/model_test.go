@@ -13,7 +13,7 @@ func TestSettingHTMLComponent(t *testing.T) {
 		want    string
 	}{
 		{
-			name: "Render the seo html",
+			name: "Render the SEO html",
 			setting: Setting{
 				Title:                "title",
 				Description:          "description",
@@ -37,7 +37,7 @@ func TestSettingHTMLComponent(t *testing.T) {
 		},
 
 		{
-			name: "Render the seo html using the tag data",
+			name: "Render the SEO html using the tag data",
 			setting: Setting{
 				Title:                "title",
 				Description:          "description",

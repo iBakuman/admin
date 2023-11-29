@@ -645,15 +645,18 @@ function(e){
 		pm.Editing().SidePanelFunc(nil).ActionsFunc(nil)
 	}
 	if seoCollection != nil {
-		seoCollection.RegisterSEO(&Page{}).RegisterContextVariables(
-			"Title",
-			func(object interface{}, _ *seo.Setting, _ *http.Request) string {
-				if p, ok := object.(Page); ok {
-					return p.Title
-				}
-				return ""
-			},
-		)
+		seoCollection.RegisterSEO(&Page{}).
+			RegisterContextVariables(
+				&seo.ContextVar{
+					Name: "Title",
+					Func: func(object interface{}, _ *seo.Setting, _ *http.Request) string {
+						if p, ok := object.(Page); ok {
+							return p.Title
+						}
+						return ""
+					},
+				},
+			)
 	}
 	note.Configure(db, pb, pm)
 	eb.CleanTabsPanels()
@@ -1353,7 +1356,7 @@ func updateSEO(db *gorm.DB, mb *presets.ModelBuilder) web.EventFunc {
 		if err != nil {
 			return
 		}
-		err = seo.EditSetterFunc(obj, &presets.FieldContext{Name: "SEO"}, ctx)
+		err = seo.EditSetterFunc(obj, &presets.FieldContext{Name: "seo"}, ctx)
 		if err != nil {
 			mb.Editing().UpdateOverlayContent(ctx, &r, obj, "", err)
 			return

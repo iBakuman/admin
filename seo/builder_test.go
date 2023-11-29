@@ -18,7 +18,7 @@ func TestBuilder_Render(t *testing.T) {
 	}
 
 	globalSeoSetting := QorSEOSetting{
-		Name: GlobalSEOName,
+		Name: "Global SEO",
 		Setting: Setting{
 			Title: "global | {{SiteName}}",
 		},
@@ -35,8 +35,12 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name:      "Render Global SEO with setting variables and default context variables",
 			prepareDB: func() { GlobalDB.Save(&globalSeoSetting) },
-			builder:   NewBuilder(),
-			obj:       GlobalSEOName,
+			builder: func() *Builder {
+				b := NewBuilder()
+				b.RegisterSEO("Global SEO").RegisterSettingVariables("SiteName")
+				return b
+			}(),
+			obj: "Global SEO",
 			want: `
 			<title>global | Qor5 dev</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
@@ -44,7 +48,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render seo setting with global setting variables",
+			name: "Render SEO setting with global setting variables",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -65,7 +69,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render seo setting with setting and context variables",
+			name: "Render SEO setting with setting and context variables",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -80,10 +84,15 @@ func TestBuilder_Render(t *testing.T) {
 			builder: func() *Builder {
 				builder := NewBuilder()
 				builder.RegisterSEO("Product").
-					RegisterSettingVariables(struct{ ProductTag string }{}).
-					RegisterContextVariables("og:image", func(_ interface{}, _ *Setting, _ *http.Request) string {
-						return "http://dev.qor5.com/images/logo.png"
-					})
+					RegisterSettingVariables("ProductTag ").
+					RegisterPropFuncForOG(
+						&PropFunc{
+							Name: "og:image",
+							Func: func(i interface{}, setting *Setting, request *http.Request) string {
+								return "http://dev.qor5.com/images/logo.png"
+							},
+						},
+					)
 				return builder
 			}(),
 			obj: "Product",
@@ -93,7 +102,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting with global and seo setting variables",
+			name: "Render model setting with global and SEO setting variables",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -118,7 +127,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting with default seo setting",
+			name: "Render model setting with default SEO setting",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -146,7 +155,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting with inherit global and seo setting",
+			name: "Render model setting with inherit global and SEO setting",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -178,7 +187,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting without inherit global and seo setting",
+			name: "Render model setting without inherit global and SEO setting",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -191,7 +200,7 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder().SetInherited(false)
+				builder := NewBuilder()
 				builder.RegisterSEO(&Product{})
 				return builder
 			}(),
@@ -214,7 +223,7 @@ func TestBuilder_Render(t *testing.T) {
 			resetDB()
 			tt.prepareDB()
 			if got, _ := tt.builder.Render(tt.obj, defaultRequest).MarshalHTML(context.TODO()); !metaEqual(string(got), tt.want) {
-				t.Errorf("Render = %v, want %v", string(got), tt.want)
+				t.Errorf("Render = %v\nExpected = %v", string(got), tt.want)
 			}
 		})
 	}
@@ -269,7 +278,7 @@ func TestCollection_RemoveSEO(t *testing.T) {
 		builder  *Builder
 		expected *Builder
 	}{{
-		name: "test remove seo",
+		name: "test remove SEO",
 		builder: func() *Builder {
 			builder := NewBuilder()
 			builder.RegisterSEO("Parent1").AppendChildren(
@@ -295,7 +304,7 @@ func TestCollection_RemoveSEO(t *testing.T) {
 			}
 			for _, desired := range expected.registeredSEO {
 				if seo := actual.GetSEO(desired.name); seo == nil {
-					t.Errorf("not found seo %v in actual", desired.name)
+					t.Errorf("not found SEO %v in actual", desired.name)
 				} else {
 					if seo.parent == nil {
 						if desired.parent != nil {
@@ -312,7 +321,7 @@ func TestCollection_RemoveSEO(t *testing.T) {
 	}
 }
 
-func TestCollection_GetListingOrders(t *testing.T) {
+func TestBuilder_SortSEOs(t *testing.T) {
 
 	cases := []struct {
 		name     string
@@ -321,7 +330,7 @@ func TestCollection_GetListingOrders(t *testing.T) {
 		expected []*QorSEOSetting
 	}{
 		{
-			name: "test_get_listing_orders",
+			name: "test_sort_seo",
 			builder: func() *Builder {
 				builder := NewBuilder()
 				builder.RegisterSEO("PLP").AppendChildren(
@@ -336,12 +345,12 @@ func TestCollection_GetListingOrders(t *testing.T) {
 				{Name: "Post"},
 				{Name: "Region"},
 				{Name: "PLP"},
-				{Name: GlobalSEOName},
+				{Name: "Global SEO"},
 				{Name: "City"},
 				{Name: "Prefecture"},
 				{Name: "Product"}},
 			expected: []*QorSEOSetting{
-				{Name: GlobalSEOName},
+				{Name: "Global SEO"},
 				{Name: "PLP"},
 				{Name: "Region"},
 				{Name: "City"},

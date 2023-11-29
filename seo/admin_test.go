@@ -3,13 +3,13 @@ package seo
 import (
 	"bytes"
 	"errors"
+	"github.com/qor5/admin/l10n"
 	"github.com/qor5/admin/presets/gorm2op"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/qor5/admin/l10n"
 	l10n_view "github.com/qor5/admin/l10n/views"
 	"github.com/qor5/admin/presets"
 	"gorm.io/gorm"
@@ -23,17 +23,16 @@ func TestAdmin(t *testing.T) {
 
 	builder := NewBuilder()
 	builder.RegisterMultipleSEO("Product Detail", "Product")
-	builder.Configure(admin, GlobalDB)
-	l10n_view.Configure(admin, GlobalDB, l10n.New().RegisterLocales("en", "en", "English"), nil)
-	// should create all seo setting in the first time
-	resetDB()
-	if req, err := http.Get(server.URL + "/admin/qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
+	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
+	builder.Configure(admin, GlobalDB, l10nBuilder)
+	l10n_view.Configure(admin, GlobalDB, GlobalL10n, nil)
+	if req, err := http.Get(server.URL + "/admin/qor-SEO-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {
 			t.Errorf("Setting page should be exist, status code is %v", req.StatusCode)
 		}
 
 		var seoSetting []*QorSEOSetting
-		GlobalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", builder.globalName})
+		GlobalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", "Global SEO"})
 
 		if len(seoSetting) != 3 {
 			t.Errorf("SEO Setting should be created successfully")
@@ -42,7 +41,7 @@ func TestAdmin(t *testing.T) {
 		t.Errorf(err.Error())
 	}
 
-	// save seo setting
+	// save SEO setting
 	var (
 		title       = "title test"
 		description = "description test"
@@ -56,7 +55,7 @@ func TestAdmin(t *testing.T) {
 	mwriter.WriteField("Product.Keywords", keyword)
 	mwriter.Close()
 
-	req, err := http.DefaultClient.Post(server.URL+"/admin/qor-seo-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
+	req, err := http.DefaultClient.Post(server.URL+"/admin/qor-SEO-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
 	if err != nil {
 		t.Fatal(err)
 	}

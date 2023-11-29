@@ -128,8 +128,8 @@ func (setting *Setting) HTMLComponent(tags map[string]string) h.HTMLComponent {
 		"og:image":       setting.OpenGraphImageURL,
 	}
 
-	for _, metaVal := range setting.OpenGraphMetadata {
-		openGraphData[metaVal.Property] = metaVal.Content
+	for _, meta := range setting.OpenGraphMetadata {
+		openGraphData[meta.Property] = meta.Content
 	}
 
 	for _, key := range []string{"og:title", "og:description", "og:url", "og:type", "og:image"} {
@@ -152,7 +152,10 @@ func (setting *Setting) HTMLComponent(tags map[string]string) h.HTMLComponent {
 
 	var openGraphDataComponents h.HTMLComponents
 	for key, value := range openGraphData {
-		openGraphDataComponents = append(openGraphDataComponents, h.Meta().Attr("property", key).Attr("name", key).Attr("content", value))
+		openGraphDataComponents = append(
+			openGraphDataComponents,
+			h.Meta().Attr("property", key).Attr("name", key).Attr("content", value),
+		)
 	}
 
 	return h.HTMLComponents{

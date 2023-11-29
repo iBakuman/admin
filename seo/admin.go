@@ -30,7 +30,7 @@ const (
 
 var permVerifier *perm.Verifier
 
-func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB) (pm *presets.ModelBuilder) {
+func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l10n.Builder) (pm *presets.ModelBuilder) {
 	if err := db.AutoMigrate(&QorSEOSetting{}); err != nil {
 		panic(err)
 	}
@@ -39,14 +39,23 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB) (pm *presets.Model
 		GlobalDB = db
 	}
 
+	var locales []string
+	if len(l10nBuilder) > 0 {
+		GlobalL10n = l10nBuilder[0]
+		locales = GlobalL10n.GetSupportLocaleCodes()
+	}
+
+	// insert records into database
+	b.dummyNode.Migrate(locales)
+
 	pb.GetWebBuilder().RegisterEventFunc(saveEvent, b.save)
 
 	pm = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO")
 	// Configure Listing Page
 	{
 
-		pml := pm.Listing("Name", "CreatedAt")
-		// disable new btn globally, no one can add new seo record after server start up.
+		pml := pm.Listing("Name")
+		// disable new btn globally, no one can add new SEO record after server start up.
 		pml.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
 			return nil
 		})
@@ -84,18 +93,38 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB) (pm *presets.Model
 					}
 				}
 			}
+			cond := presets.SQLCondition{
+				Query: "locale_code = ?",
+				Args:  []interface{}{locale},
+			}
+			params.SQLConditions = append(params.SQLConditions, &cond)
 			r, totalCount, err = oldSearcher(model, params, ctx)
 			b.SortSEOs(r.([]*QorSEOSetting))
 			return
 		})
 	}
-	// pm.Editing("Setting").Field("Setting").ComponentFunc(
-	// 	func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
-	// 		return collection.vseo(fieldPrefix, seo, &setting, ctx.R),
-	// 	},
-	// )
-	// pm.Listing().PageFunc(collection.pageFunc)
-	// pm = b.Model(collection.settingModel).Label("SEO")
+	// Configure Editing
+	pme := pm.Editing("Setting")
+	pme.Field("Setting").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+		seoSetting := obj.(*QorSEOSetting)
+		msgr := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
+		settingVars := b.GetSEO(seoSetting.Name).settingVars
+		var variablesComps h.HTMLComponents
+		if len(settingVars) > 0 {
+			variablesComps = append(variablesComps, h.H3(msgr.Variable).Style("margin-top:15px;font-weight: 500"))
+			for varName, _ := range settingVars {
+				fieldComp := VTextField().
+					FieldName(fmt.Sprintf("%s.Variables.%s", seoSetting.Name, field.Name)).
+					Label(i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo Variable", field.Name)).
+					Value(varName)
+				variablesComps = append(variablesComps, fieldComp)
+			}
+		}
+		return VCardText(
+			variablesComps,
+			b.vseo("Setting", b.GetSEO(seoSetting.Name), &seoSetting.Setting, ctx.R),
+		)
+	})
 	pb.FieldDefaults(presets.WRITE).
 		FieldType(Setting{}).
 		ComponentFunc(b.EditingComponentFunc).
@@ -105,8 +134,8 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB) (pm *presets.Model
 		RegisterForModule(language.English, I18nSeoKey, Messages_en_US).
 		RegisterForModule(language.SimplifiedChinese, I18nSeoKey, Messages_zh_CN)
 
-	pb.ExtraAsset("/vue-seo.js", "text/javascript", SeoJSComponentsPack())
-	permVerifier = perm.NewVerifier("seo", pb.GetPermission())
+	pb.ExtraAsset("/vue-SEO.js", "text/javascript", SeoJSComponentsPack())
+	permVerifier = perm.NewVerifier("SEO", pb.GetPermission())
 	return
 }
 
@@ -151,8 +180,12 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 		db          = b.getDBFromContext(ctx.R.Context())
 		locale, _   = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
-
-	seo := b.GetSEO(obj)
+	var seo *SEO
+	if qs, ok := obj.(*QorSEOSetting); ok {
+		seo = b.GetSEO(qs.Name)
+	} else {
+		seo = b.GetSEO(obj)
+	}
 	if seo == nil {
 		return h.Div()
 	}
@@ -206,145 +239,22 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 		VSlot("{ locals }")
 }
 
-func (b *Builder) pageFunc(ctx *web.EventContext) (_ web.PageResponse, err error) {
-	var (
-		msgr      = i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
-		db        = b.getDBFromContext(ctx.R.Context())
-		locale, _ = l10n.IsLocalizableFromCtx(ctx.R.Context())
-	)
-
-	var seoComponents h.HTMLComponents
-	for _, seo := range b.registeredSEO {
-		modelSetting := &QorSEOSetting{}
-		err := db.Where("name = ? AND locale_code = ?", seo.name, locale).First(modelSetting).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			modelSetting.Name = seo.name
-			modelSetting.SetLocale(locale)
-			if err := db.Save(modelSetting).Error; err != nil {
-				panic(err)
-			}
-		}
-
-		var variablesComps h.HTMLComponents
-		if seo.settingVariables != nil {
-			variables := reflect.Indirect(reflect.New(reflect.Indirect(reflect.ValueOf(seo.settingVariables)).Type()))
-			variableValues := modelSetting.Variables
-			for i := 0; i < variables.NumField(); i++ {
-				fieldName := variables.Type().Field(i).Name
-				if variableValues[fieldName] != "" {
-					fmt.Println(fieldName, variableValues[fieldName])
-					variables.Field(i).Set(reflect.ValueOf(variableValues[fieldName]))
-				}
-			}
-
-			if variables.Type().NumField() > 0 {
-				variablesComps = append(variablesComps, h.H3(msgr.Variable).Style("margin-top:15px;font-weight: 500"))
-			}
-
-			for i := 0; i < variables.Type().NumField(); i++ {
-				field := variables.Type().Field(i)
-				variablesComps = append(variablesComps, VTextField().FieldName(fmt.Sprintf("%s.Variables.%s", seo.name, field.Name)).Label(i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo Variable", field.Name)).Value(variables.Field(i).String()))
-			}
-		}
-
-		var (
-			label       string
-			setting     = modelSetting.Setting
-			loadingName = strings.ReplaceAll(strings.ToLower(seo.name), " ", "_")
-		)
-
-		if seo.name == b.globalName {
-			label = msgr.GlobalName
-		} else {
-			label = i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo", seo.name)
-		}
-
-		comp := VExpansionPanel(
-			VExpansionPanelHeader(h.H4(label).Style("font-weight: 500;")),
-			VExpansionPanelContent(
-				VCardText(
-					variablesComps,
-					b.vseo(modelSetting.Name, seo, &setting, ctx.R),
-				),
-				VCardActions(
-					VSpacer(),
-					VBtn(msgr.Save).Bind("loading", fmt.Sprintf("vars.%s", loadingName)).Color("primary").Large(true).
-						Attr("@click", web.Plaid().
-							EventFunc(saveEvent).
-							Query("name", seo.name).
-							Query("loadingName", loadingName).
-							BeforeScript(fmt.Sprintf("vars.%s = true;", loadingName)).Go()),
-				).Attr(web.InitContextVars, fmt.Sprintf(`{%s: false}`, loadingName)),
-			),
-		)
-		seoComponents = append(seoComponents, comp)
-	}
-	return web.PageResponse{
-		PageTitle: msgr.PageTitle,
-		Body: h.If(editIsAllowed(ctx.R) == nil, VContainer(
-			VSnackbar(h.Text(msgr.SavedSuccessfully)).
-				Attr("v-model", "vars.seoSnackbarShow").
-				Top(true).
-				Color("primary").
-				Timeout(2000),
-			VRow(
-				VCol(
-					VContainer(
-						h.H3(msgr.PageMetadataTitle).Attr("style", "font-weight: 500"),
-						h.P().Text(msgr.PageMetadataDescription)),
-				).Cols(3),
-				VCol(
-					VExpansionPanels(
-						seoComponents,
-					).Focusable(true),
-				).Cols(9),
-			),
-		).Attr("style", "background-color: #f5f5f5;max-width:100%").Attr(web.InitContextVars, `{seoSnackbarShow: false}`)),
-	}, nil
-}
-
 func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http.Request) h.HTMLComponent {
 	var (
-		seos []*SEO
 		msgr = i18n.MustGetModuleMessages(req, I18nSeoKey, Messages_en_US).(*Messages)
 		db   = b.getDBFromContext(req.Context())
 	)
-	if seo.name == b.globalName {
-		seos = append(seos, seo)
-	} else {
-		seos = append(seos, b.GetSEO(b.globalName), seo)
-	}
-
-	var (
-		variablesEle []h.HTMLComponent
-		variables    []string
-	)
-
-	for _, seo := range seos {
-		if seo.settingVariables != nil {
-			value := reflect.Indirect(reflect.ValueOf(seo.settingVariables)).Type()
-			for i := 0; i < value.NumField(); i++ {
-				fieldName := value.Field(i).Name
-				variables = append(variables, fieldName)
-			}
-		}
-
-		for key := range seo.contextVariables {
-			if !strings.Contains(key, ":") {
-				variables = append(variables, key)
-			}
-		}
-	}
 
 	var varComps []h.HTMLComponent
-	for _, variable := range variables {
+	for varName := range seo.GetAvailableVars() {
 		varComps = append(varComps,
 			VChip(
 				VIcon("add_box").Class("mr-2"),
-				h.Text(i18n.PT(req, presets.ModelsI18nModuleKey, "Seo Variable", variable)),
-			).Attr("@click", fmt.Sprintf("$refs.seo.addTags('%s')", variable)).Label(true).Outlined(true),
+				h.Text(i18n.PT(req, presets.ModelsI18nModuleKey, "Seo Variable", varName)),
+			).Attr("@click", fmt.Sprintf("$refs.SEO.addTags('%s')", varName)).Label(true).Outlined(true),
 		)
 	}
+	var variablesEle []h.HTMLComponent
 	variablesEle = append(variablesEle, VChipGroup(varComps...).Column(true).Class("ma-4"))
 
 	image := &setting.OpenGraphImageFromMediaLibrary
@@ -359,9 +269,9 @@ func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http
 		),
 		VCard(
 			VCardText(
-				VTextField().Attr("counter", true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Title")).Label(msgr.Title).Value(setting.Title).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_title", refPrefix))).Attr("ref", fmt.Sprintf("%s_title", refPrefix)),
-				VTextField().Attr("counter", true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Description")).Label(msgr.Description).Value(setting.Description).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_description", refPrefix))).Attr("ref", fmt.Sprintf("%s_description", refPrefix)),
-				VTextarea().Attr("counter", true).Rows(2).AutoGrow(true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Keywords")).Label(msgr.Keywords).Value(setting.Keywords).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_keywords", refPrefix))).Attr("ref", fmt.Sprintf("%s_keywords", refPrefix)),
+				VTextField().Attr("counter", true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Title")).Label(msgr.Title).Value(setting.Title).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_title", refPrefix))).Attr("ref", fmt.Sprintf("%s_title", refPrefix)),
+				VTextField().Attr("counter", true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Description")).Label(msgr.Description).Value(setting.Description).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_description", refPrefix))).Attr("ref", fmt.Sprintf("%s_description", refPrefix)),
+				VTextarea().Attr("counter", true).Rows(2).AutoGrow(true).FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "Keywords")).Label(msgr.Keywords).Value(setting.Keywords).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_keywords", refPrefix))).Attr("ref", fmt.Sprintf("%s_keywords", refPrefix)),
 			),
 		).Outlined(true).Flat(true),
 
@@ -369,15 +279,15 @@ func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http
 		VCard(
 			VCardText(
 				VRow(
-					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphTitle")).Label(msgr.OpenGraphTitle).Value(setting.OpenGraphTitle).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_title", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_title", refPrefix))).Cols(6),
-					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphDescription")).Label(msgr.OpenGraphDescription).Value(setting.OpenGraphDescription).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_description", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_description", refPrefix))).Cols(6),
+					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphTitle")).Label(msgr.OpenGraphTitle).Value(setting.OpenGraphTitle).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_title", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_title", refPrefix))).Cols(6),
+					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphDescription")).Label(msgr.OpenGraphDescription).Value(setting.OpenGraphDescription).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_description", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_description", refPrefix))).Cols(6),
 				),
 				VRow(
-					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphURL")).Label(msgr.OpenGraphURL).Value(setting.OpenGraphURL).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_url", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_url", refPrefix))).Cols(6),
-					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphType")).Label(msgr.OpenGraphType).Value(setting.OpenGraphType).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_type", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_type", refPrefix))).Cols(6),
+					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphURL")).Label(msgr.OpenGraphURL).Value(setting.OpenGraphURL).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_url", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_url", refPrefix))).Cols(6),
+					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphType")).Label(msgr.OpenGraphType).Value(setting.OpenGraphType).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_type", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_type", refPrefix))).Cols(6),
 				),
 				VRow(
-					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphImageURL")).Label(msgr.OpenGraphImageURL).Value(setting.OpenGraphImageURL).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_imageurl", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_imageurl", refPrefix))).Cols(12),
+					VCol(VTextField().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphImageURL")).Label(msgr.OpenGraphImageURL).Value(setting.OpenGraphImageURL).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_imageurl", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_imageurl", refPrefix))).Cols(12),
 				),
 				VRow(
 					VCol(views.QMediaBox(db).Label(msgr.OpenGraphImage).
@@ -401,11 +311,11 @@ func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http
 							},
 						})).Cols(12)),
 				VRow(
-					VCol(VTextarea().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphMetadataString")).Label(msgr.OpenGraphMetadata).Value(GetOpenGraphMetadataString(setting.OpenGraphMetadata)).Attr("@focus", fmt.Sprintf("$refs.seo.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_metadata", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_metadata", refPrefix))).Cols(12),
+					VCol(VTextarea().FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "OpenGraphMetadataString")).Label(msgr.OpenGraphMetadata).Value(GetOpenGraphMetadataString(setting.OpenGraphMetadata)).Attr("@focus", fmt.Sprintf("$refs.SEO.tagInputsFocus($refs.%s)", fmt.Sprintf("%s_og_metadata", refPrefix))).Attr("ref", fmt.Sprintf("%s_og_metadata", refPrefix))).Cols(12),
 				),
 			),
 		).Outlined(true).Flat(true),
-	).Attr("ref", "seo")
+	).Attr("ref", "SEO")
 }
 
 func (b *Builder) save(ctx *web.EventContext) (r web.EventResponse, err error) {
