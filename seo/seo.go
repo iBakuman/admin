@@ -361,6 +361,9 @@ func (seo *SEO) GetFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting
 			setting.OpenGraphMetadata = settingOfParent.OpenGraphMetadata
 		}
 	}
+	if seoSetting.Variables == nil {
+		seoSetting.Variables = make(Variables)
+	}
 	variables := seoSetting.Variables
 	variablesOfParent := seoSettingOfParent.Variables
 	for varName, val := range variablesOfParent {

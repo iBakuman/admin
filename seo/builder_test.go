@@ -25,6 +25,20 @@ func TestBuilder_Render(t *testing.T) {
 		Variables: map[string]string{"SiteName": "Qor5 dev"},
 	}
 
+	newBuilderWithGlobalSEO := func() (*Builder, *SEO) {
+		builder := NewBuilder()
+		globalSEO := builder.RegisterSEO("Global SEO")
+		globalSEO.RegisterSettingVariables("SiteName").
+			RegisterPropFuncForOG(
+				&PropFunc{
+					Name: "og:url",
+					Func: func(_ interface{}, _ *Setting, req *http.Request) string {
+						return req.URL.String()
+					},
+				},
+			)
+		return builder, globalSEO
+	}
 	tests := []struct {
 		name      string
 		prepareDB func()
@@ -36,9 +50,8 @@ func TestBuilder_Render(t *testing.T) {
 			name:      "Render Global SEO with setting variables and default context variables",
 			prepareDB: func() { GlobalDB.Save(&globalSeoSetting) },
 			builder: func() *Builder {
-				b := NewBuilder()
-				b.RegisterSEO("Global SEO").RegisterSettingVariables("SiteName")
-				return b
+				builder, _ := newBuilderWithGlobalSEO()
+				return builder
 			}(),
 			obj: "Global SEO",
 			want: `
@@ -46,7 +59,6 @@ func TestBuilder_Render(t *testing.T) {
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
 			`,
 		},
-
 		{
 			name: "Render SEO setting with global setting variables",
 			prepareDB: func() {
@@ -60,8 +72,8 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
-				builder.RegisterSEO("Product")
+				builder, seoRoot := newBuilderWithGlobalSEO()
+				builder.RegisterSEO("Product").SetParent(seoRoot)
 				return builder
 			}(),
 			obj:  "Product",
@@ -69,7 +81,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render SEO setting with setting and context variables",
+			name: "Render SEO setting with setting and opengraph prop",
 			prepareDB: func() {
 				GlobalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -82,7 +94,7 @@ func TestBuilder_Render(t *testing.T) {
 				GlobalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder, globalSEO := newBuilderWithGlobalSEO()
 				builder.RegisterSEO("Product").
 					RegisterSettingVariables("ProductTag ").
 					RegisterPropFuncForOG(
@@ -92,7 +104,7 @@ func TestBuilder_Render(t *testing.T) {
 								return "http://dev.qor5.com/images/logo.png"
 							},
 						},
-					)
+					).SetParent(globalSEO)
 				return builder
 			}(),
 			obj: "Product",
@@ -230,7 +242,7 @@ func TestBuilder_Render(t *testing.T) {
 
 }
 
-func TestCollection_GetSEOPriority(t *testing.T) {
+func TestBuilder_GetSEOPriority(t *testing.T) {
 	cases := []struct {
 		name     string
 		builder  *Builder
@@ -272,7 +284,7 @@ func TestCollection_GetSEOPriority(t *testing.T) {
 	}
 }
 
-func TestCollection_RemoveSEO(t *testing.T) {
+func TestBuilder_RemoveSEO(t *testing.T) {
 	cases := []struct {
 		name     string
 		builder  *Builder
