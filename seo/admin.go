@@ -170,6 +170,7 @@ func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.Event
 			reflectutils.Set(&setting, strings.TrimPrefix(fieldWithPrefix, fmt.Sprintf("%s.", field.Name)), ctx.R.Form.Get(fieldWithPrefix))
 		}
 	}
+	setting.OpenGraphImageFromMediaLibrary = mediaBox
 	return reflectutils.Set(obj, field.Name, setting)
 }
 
