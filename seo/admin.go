@@ -2,7 +2,6 @@ package seo
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -78,23 +77,14 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 
 		oldSearcher := pml.Searcher
 		pml.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
-			// msgr      := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
-			db := b.getDBFromContext(ctx.R.Context())
 			locale, _ := l10n.IsLocalizableFromCtx(ctx.R.Context())
+			var seoNames []string
 			for name := range b.registeredSEO {
-				var modelSetting QorSEOSetting
-				err := db.Where("name = ? AND locale_code = ?", name, locale).First(&modelSetting).Error
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					modelSetting.Name = name
-					modelSetting.SetLocale(locale)
-					if err := db.Save(&modelSetting).Error; err != nil {
-						panic(err)
-					}
-				}
+				seoNames = append(seoNames, name)
 			}
 			cond := presets.SQLCondition{
-				Query: "locale_code = ?",
-				Args:  []interface{}{locale},
+				Query: "locale_code = ? and name in (?)",
+				Args:  []interface{}{locale, seoNames},
 			}
 			params.SQLConditions = append(params.SQLConditions, &cond)
 			r, totalCount, err = oldSearcher(model, params, ctx)
