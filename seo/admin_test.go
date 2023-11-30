@@ -24,7 +24,7 @@ func TestAdmin(t *testing.T) {
 	builder := NewBuilder()
 	builder.RegisterMultipleSEO("Product Detail", "Product")
 	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
-	builder.Configure(admin, globalDB, l10nBuilder)
+	builder.Configure(admin, globalDB, l10nBuilder.GetSupportLocaleCodes()...)
 	l10n_view.Configure(admin, globalDB, l10nBuilder, nil)
 	if req, err := http.Get(server.URL + "/admin/qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {

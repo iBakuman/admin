@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"github.com/qor5/admin/l10n"
 	"net/http"
 
 	"github.com/qor5/admin/example/models"
@@ -13,7 +12,7 @@ import (
 // @snippet_begin(SeoExample)
 var seoBuilder *seo.Builder
 
-func ConfigureSeo(b *presets.Builder, db *gorm.DB, l10nBuilder ...*l10n.Builder) *presets.ModelBuilder {
+func ConfigureSeo(b *presets.Builder, db *gorm.DB, locales ...string) *presets.ModelBuilder {
 	seoBuilder = seo.NewBuilder()
 	seoBuilder.RegisterSEO(&models.Post{}).
 		RegisterContextVariables(
@@ -26,7 +25,9 @@ func ConfigureSeo(b *presets.Builder, db *gorm.DB, l10nBuilder ...*l10n.Builder)
 					return ""
 				}}).
 		RegisterSettingVariables("Test")
-	return seoBuilder.Configure(b, db, l10nBuilder...)
+	seoBuilder.RegisterMultipleSEO("Product", "Announcement")
+	return seoBuilder.Configure(b, db, locales...)
+
 }
 
 // @snippet_end

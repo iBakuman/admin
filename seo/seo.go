@@ -293,6 +293,7 @@ func (seo *SEO) migrate(locales []string) {
 			settings = append(settings, QorSEOSetting{
 				Name:      seo.name,
 				Variables: variables,
+				Locale:    l10n.Locale{LocaleCode: "empty"},
 			})
 		} else {
 			for _, locale := range locales {

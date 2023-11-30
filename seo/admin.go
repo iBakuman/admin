@@ -23,13 +23,12 @@ import (
 )
 
 const (
-	saveEvent                 = "seo_save_collection"
 	I18nSeoKey i18n.ModuleKey = "I18nSeoKey"
 )
 
 var permVerifier *perm.Verifier
 
-func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l10n.Builder) (pm *presets.ModelBuilder) {
+func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, locales ...string) (seoModel *presets.ModelBuilder) {
 	if err := db.AutoMigrate(&QorSEOSetting{}); err != nil {
 		panic(err)
 	}
@@ -38,63 +37,88 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 		globalDB = db
 	}
 
-	var locales []string
-	if len(l10nBuilder) > 0 {
-		locales = l10nBuilder[0].GetSupportLocaleCodes()
-	}
-
 	// insert records into database
 	b.seoRoot.migrate(locales)
 
-	pb.GetWebBuilder().RegisterEventFunc(saveEvent, b.save)
+	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO")
 
-	pm = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO")
 	// Configure Listing Page
-	{
-
-		pml := pm.Listing("Name")
-		// disable new btn globally, no one can add new SEO record after server start up.
-		pml.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
-			return nil
-		})
-
-		// Remove the menu from each line
-		pml.RowMenu().Empty()
-
-		// Configure the indentation for Name field to display hierarchy.
-		pml.Field("Name").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
-			seo := obj.(*QorSEOSetting)
-			icon := "folder"
-			priority := b.GetSEOPriority(seo.Name)
-			// listingOrders := collection.SortSEOs()
-			return h.Td(
-				h.Div(
-					VIcon(icon).Small(true).Class("mb-1"),
-					h.Text(seo.Name),
-				).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
-			)
-		})
-
-		oldSearcher := pml.Searcher
-		pml.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
-			locale, _ := l10n.IsLocalizableFromCtx(ctx.R.Context())
-			var seoNames []string
-			for name := range b.registeredSEO {
-				seoNames = append(seoNames, name)
-			}
-			cond := presets.SQLCondition{
-				Query: "locale_code = ? and name in (?)",
-				Args:  []interface{}{locale, seoNames},
-			}
-			params.SQLConditions = append(params.SQLConditions, &cond)
-			r, totalCount, err = oldSearcher(model, params, ctx)
-			b.SortSEOs(r.([]*QorSEOSetting))
-			return
-		})
-	}
+	b.configListing(seoModel)
 	// Configure Editing
-	pme := pm.Editing("Setting")
-	pme.Field("Setting").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+	b.configEditing(seoModel)
+
+	pb.FieldDefaults(presets.WRITE).
+		FieldType(Setting{}).
+		ComponentFunc(b.EditingComponentFunc).
+		SetterFunc(EditSetterFunc)
+
+	pb.I18n().
+		RegisterForModule(language.English, I18nSeoKey, Messages_en_US).
+		RegisterForModule(language.SimplifiedChinese, I18nSeoKey, Messages_zh_CN)
+
+	pb.ExtraAsset("/vue-seo.js", "text/javascript", SeoJSComponentsPack())
+	permVerifier = perm.NewVerifier("seo", pb.GetPermission())
+	return
+}
+
+func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
+	listing := seoModel.Listing("Name")
+	// disable new btn globally, no one can add new SEO record after server start up.
+	listing.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
+		return nil
+	})
+
+	// Remove the row menu from each row
+	listing.RowMenu().Empty()
+
+	// Configure the indentation for Name field to display hierarchy.
+	listing.Field("Name").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+		seo := obj.(*QorSEOSetting)
+		icon := "folder"
+		priority := b.GetSEOPriority(seo.Name)
+		return h.Td(
+			h.Div(
+				VIcon(icon).Small(true).Class("mb-1"),
+				h.Text(seo.Name),
+			).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
+		)
+	})
+
+	oldSearcher := listing.Searcher
+	listing.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
+		locale, _ := l10n.IsLocalizableFromCtx(ctx.R.Context())
+		var seoNames []string
+		for name := range b.registeredSEO {
+			seoNames = append(seoNames, name)
+		}
+		cond := presets.SQLCondition{
+			Query: "locale_code = ? and name in (?)",
+			Args:  []interface{}{locale, seoNames},
+		}
+		params.SQLConditions = append(params.SQLConditions, &cond)
+		r, totalCount, err = oldSearcher(model, params, ctx)
+		b.SortSEOs(r.([]*QorSEOSetting))
+		return
+	})
+}
+
+func (b *Builder) configEditing(seoModel *presets.ModelBuilder) {
+	editing := seoModel.Editing("Setting")
+	oldSaver := editing.Saver
+	editing.Saver = func(obj interface{}, id string, ctx *web.EventContext) (err error) {
+		seoSetting := obj.(*QorSEOSetting)
+		if err := oldSaver(obj, id, ctx); err != nil {
+			return err
+		}
+		if b.afterSave != nil {
+			if err := b.afterSave(ctx.R.Context(), seoSetting.Name, seoSetting.LocaleCode); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	editing.Field("Setting").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
 		seoSetting := obj.(*QorSEOSetting)
 		msgr := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
 		settingVars := b.GetSEO(seoSetting.Name).settingVars
@@ -114,18 +138,6 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 			b.vseo("Setting", b.GetSEO(seoSetting.Name), &seoSetting.Setting, ctx.R),
 		}
 	})
-	pb.FieldDefaults(presets.WRITE).
-		FieldType(Setting{}).
-		ComponentFunc(b.EditingComponentFunc).
-		SetterFunc(EditSetterFunc)
-
-	pb.I18n().
-		RegisterForModule(language.English, I18nSeoKey, Messages_en_US).
-		RegisterForModule(language.SimplifiedChinese, I18nSeoKey, Messages_zh_CN)
-
-	pb.ExtraAsset("/vue-SEO.js", "text/javascript", SeoJSComponentsPack())
-	permVerifier = perm.NewVerifier("SEO", pb.GetPermission())
-	return
 }
 
 func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) (err error) {

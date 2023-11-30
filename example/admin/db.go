@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"gorm.io/gorm/logger"
 	"os"
 
 	"github.com/qor5/admin/example/models"
@@ -19,7 +20,7 @@ func ConnectDB() *gorm.DB {
 		panic(err)
 	}
 
-	// db.Logger = db.Logger.LogMode(logger.Info)
+	db.Logger = db.Logger.LogMode(logger.Info)
 
 	if err = db.AutoMigrate(
 		&models.Post{},
