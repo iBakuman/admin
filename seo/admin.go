@@ -40,17 +40,19 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, locales ...string)
 	// insert records into database
 	b.seoRoot.migrate(locales)
 
+	// The registration of FieldDefaults for writing Setting here
+	// must be executed before `pb.Model(&QorSEOSetting{})...`,
+	pb.FieldDefaults(presets.WRITE).
+		FieldType(Setting{}).
+		ComponentFunc(b.EditingComponentFunc).
+		SetterFunc(EditSetterFunc)
+
 	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO")
 
 	// Configure Listing Page
 	b.configListing(seoModel)
 	// Configure Editing
 	b.configEditing(seoModel)
-
-	pb.FieldDefaults(presets.WRITE).
-		FieldType(Setting{}).
-		ComponentFunc(b.EditingComponentFunc).
-		SetterFunc(EditSetterFunc)
 
 	pb.I18n().
 		RegisterForModule(language.English, I18nSeoKey, Messages_en_US).
@@ -157,20 +159,19 @@ func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.Event
 		if strings.HasPrefix(fieldWithPrefix, fmt.Sprintf("%s.%s", field.Name, "OpenGraphImageFromMediaLibrary")) {
 			if fieldWithPrefix == fmt.Sprintf("%s.%s", field.Name, "OpenGraphImageFromMediaLibrary.Description") {
 				mediaBox.Description = ctx.R.Form.Get(fieldWithPrefix)
-				reflectutils.Set(&setting, "OpenGraphImageFromMediaLibrary", mediaBox)
+				setting.OpenGraphImageFromMediaLibrary = mediaBox
 			}
 			continue
 		}
 		if fieldWithPrefix == fmt.Sprintf("%s.%s", field.Name, "OpenGraphMetadataString") {
 			metadata := GetOpenGraphMetadata(ctx.R.Form.Get(fieldWithPrefix))
-			reflectutils.Set(&setting, "OpenGraphMetadata", metadata)
+			setting.OpenGraphMetadata = metadata
 			continue
 		}
 		if strings.HasPrefix(fieldWithPrefix, fmt.Sprintf("%s.", field.Name)) {
 			reflectutils.Set(&setting, strings.TrimPrefix(fieldWithPrefix, fmt.Sprintf("%s.", field.Name)), ctx.R.Form.Get(fieldWithPrefix))
 		}
 	}
-	setting.OpenGraphImageFromMediaLibrary = mediaBox
 	return reflectutils.Set(obj, field.Name, setting)
 }
 
