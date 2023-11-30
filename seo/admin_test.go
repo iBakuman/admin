@@ -17,22 +17,22 @@ import (
 
 func TestAdmin(t *testing.T) {
 	var (
-		admin  = presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(GlobalDB))
+		admin  = presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(globalDB))
 		server = httptest.NewServer(admin)
 	)
 
 	builder := NewBuilder()
 	builder.RegisterMultipleSEO("Product Detail", "Product")
 	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
-	builder.Configure(admin, GlobalDB, l10nBuilder)
-	l10n_view.Configure(admin, GlobalDB, l10nBuilder, nil)
-	if req, err := http.Get(server.URL + "/admin/qor-SEO-settings?__execute_event__=__reload__&locale=en"); err == nil {
+	builder.Configure(admin, globalDB, l10nBuilder)
+	l10n_view.Configure(admin, globalDB, l10nBuilder, nil)
+	if req, err := http.Get(server.URL + "/admin/qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {
 			t.Errorf("Setting page should be exist, status code is %v", req.StatusCode)
 		}
 
 		var seoSetting []*QorSEOSetting
-		GlobalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", "Global SEO"})
+		globalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", defaultGlobalSEOName})
 
 		if len(seoSetting) != 3 {
 			t.Errorf("SEO Setting should be created successfully")
@@ -55,7 +55,7 @@ func TestAdmin(t *testing.T) {
 	mwriter.WriteField("Product.Keywords", keyword)
 	mwriter.Close()
 
-	req, err := http.DefaultClient.Post(server.URL+"/admin/qor-SEO-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
+	req, err := http.DefaultClient.Post(server.URL+"/admin/qor-seo-settings?__execute_event__=seo_save_collection&name=Product&locale=en", mwriter.FormDataContentType(), form)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestAdmin(t *testing.T) {
 	}
 
 	seoSetting := &QorSEOSetting{}
-	err = GlobalDB.First(seoSetting, "name = ?", "Product").Error
+	err = globalDB.First(seoSetting, "name = ?", "Product").Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Errorf("SEO Setting should be created successfully")
 	}

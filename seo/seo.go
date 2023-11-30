@@ -281,9 +281,9 @@ func (seo *SEO) migrate(locales []string) {
 		return
 	}
 
-	// Checking `seo.parent == nil` is to avoid create records with empty name
+	// Checking `seo.name != nil` is to avoid create records with empty name
 	// when the current node is the dummy node
-	if seo.parent != nil {
+	if seo.name != "" {
 		settings := make([]QorSEOSetting, 0, len(locales))
 		variables := make(map[string]string)
 		for varName := range seo.settingVars {
@@ -305,7 +305,7 @@ func (seo *SEO) migrate(locales []string) {
 		}
 		// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
 		// or cause the create function to fail When the data to be inserted already exists in the database,
-		if err := GlobalDB.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
+		if err := globalDB.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
 			panic(err)
 		}
 	}
@@ -326,40 +326,9 @@ func (seo *SEO) getFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting
 	if err != nil {
 		panic(err)
 	}
-	setting := &seoSetting.Setting
-	settingOfParent := &seoSettingOfParent.Setting
-	{
-		if setting.Title == "" {
-			setting.Title = settingOfParent.Title
-		}
-		if setting.Description == "" {
-			setting.Description = settingOfParent.Description
-		}
-		if setting.Keywords == "" {
-			setting.Keywords = settingOfParent.Keywords
-		}
-		if setting.OpenGraphTitle == "" {
-			setting.OpenGraphTitle = settingOfParent.OpenGraphTitle
-		}
-		if setting.OpenGraphDescription == "" {
-			setting.OpenGraphDescription = settingOfParent.OpenGraphDescription
-		}
-		if setting.OpenGraphURL == "" {
-			setting.OpenGraphURL = settingOfParent.OpenGraphURL
-		}
-		if setting.OpenGraphType == "" {
-			setting.OpenGraphType = settingOfParent.OpenGraphType
-		}
-		if setting.OpenGraphImageURL == "" {
-			setting.OpenGraphImageURL = settingOfParent.OpenGraphImageURL
-		}
-		if setting.OpenGraphImageURL == "" {
-			setting.OpenGraphImageURL = settingOfParent.OpenGraphImageFromMediaLibrary.URL("og")
-		}
-		if len(setting.OpenGraphMetadata) == 0 {
-			setting.OpenGraphMetadata = settingOfParent.OpenGraphMetadata
-		}
-	}
+	highPSetting := &seoSetting.Setting
+	lowPSetting := &seoSettingOfParent.Setting
+	mergeSetting(lowPSetting, highPSetting)
 	if seoSetting.Variables == nil {
 		seoSetting.Variables = make(Variables)
 	}
@@ -414,5 +383,38 @@ func (seo *SEO) checkConflict(varName string, isContextVar bool) {
 			}
 			node = node.parent
 		}
+	}
+}
+
+func mergeSetting(lowPSetting, highPSetting *Setting) {
+	if highPSetting.Title == "" {
+		highPSetting.Title = lowPSetting.Title
+	}
+	if highPSetting.Description == "" {
+		highPSetting.Description = lowPSetting.Description
+	}
+	if highPSetting.Keywords == "" {
+		highPSetting.Keywords = lowPSetting.Keywords
+	}
+	if highPSetting.OpenGraphTitle == "" {
+		highPSetting.OpenGraphTitle = lowPSetting.OpenGraphTitle
+	}
+	if highPSetting.OpenGraphDescription == "" {
+		highPSetting.OpenGraphDescription = lowPSetting.OpenGraphDescription
+	}
+	if highPSetting.OpenGraphURL == "" {
+		highPSetting.OpenGraphURL = lowPSetting.OpenGraphURL
+	}
+	if highPSetting.OpenGraphType == "" {
+		highPSetting.OpenGraphType = lowPSetting.OpenGraphType
+	}
+	if highPSetting.OpenGraphImageURL == "" {
+		highPSetting.OpenGraphImageURL = lowPSetting.OpenGraphImageURL
+	}
+	if highPSetting.OpenGraphImageURL == "" {
+		highPSetting.OpenGraphImageURL = lowPSetting.OpenGraphImageFromMediaLibrary.URL("og")
+	}
+	if len(highPSetting.OpenGraphMetadata) == 0 {
+		highPSetting.OpenGraphMetadata = lowPSetting.OpenGraphMetadata
 	}
 }

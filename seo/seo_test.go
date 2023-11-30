@@ -138,36 +138,36 @@ func TestSEO_migrate(t *testing.T) {
 		name      string
 		prepareDB func()
 		locales   []string
-		dummyNode *SEO
+		seoRoot   *SEO
 		expected  []*QorSEOSetting
 	}{
 		{
 			name: "migrating_with_nil_root",
 			prepareDB: func() {
 				resetDB()
-				if err := GlobalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 			},
-			locales:   []string{"en", "jp", "zh"},
-			dummyNode: nil,
-			expected:  []*QorSEOSetting{},
+			locales:  []string{"en", "jp", "zh"},
+			seoRoot:  nil,
+			expected: []*QorSEOSetting{},
 		},
 		{
 			name:    "plain",
 			locales: []string{"en", "jp", "zh"},
-			dummyNode: func() *SEO {
-				dummyNode := &SEO{}
-				seoRoot := &SEO{name: "Root"}
-				dummyNode.AppendChildren(
-					seoRoot.AppendChildren(&SEO{name: "child1"}, &SEO{name: "child2"}),
+			seoRoot: func() *SEO {
+				seoRoot := &SEO{}
+				parent := &SEO{name: "Parent"}
+				seoRoot.AppendChildren(
+					parent.AppendChildren(&SEO{name: "child1"}, &SEO{name: "child2"}),
 				)
-				return dummyNode
+				return seoRoot
 			}(),
 			expected: []*QorSEOSetting{
-				{Name: "Root", Locale: l10n.Locale{LocaleCode: "en"}},
-				{Name: "Root", Locale: l10n.Locale{LocaleCode: "jp"}},
-				{Name: "Root", Locale: l10n.Locale{LocaleCode: "zh"}},
+				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "en"}},
+				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "jp"}},
+				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "zh"}},
 				{Name: "child1", Locale: l10n.Locale{LocaleCode: "zh"}},
 				{Name: "child1", Locale: l10n.Locale{LocaleCode: "jp"}},
 				{Name: "child1", Locale: l10n.Locale{LocaleCode: "en"}},
@@ -180,7 +180,7 @@ func TestSEO_migrate(t *testing.T) {
 			name: "existing_data_before_migrating",
 			prepareDB: func() {
 				resetDB()
-				if err := GlobalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 				seoSetting := QorSEOSetting{
@@ -190,18 +190,18 @@ func TestSEO_migrate(t *testing.T) {
 						Title: "Hello World, Qor5 SEO!",
 					},
 				}
-				if err := GlobalDB.Save(&seoSetting).Error; err != nil {
+				if err := globalDB.Save(&seoSetting).Error; err != nil {
 					panic(err)
 				}
 			},
 			locales: []string{"en", "jp"},
-			dummyNode: func() *SEO {
-				dummyNode := &SEO{}
-				seoRoot := &SEO{name: "Root"}
-				dummyNode.AppendChildren(
-					seoRoot.AppendChildren(&SEO{name: "Child"}),
+			seoRoot: func() *SEO {
+				seoRoot := &SEO{}
+				root := &SEO{name: "Root"}
+				seoRoot.AppendChildren(
+					root.AppendChildren(&SEO{name: "Child"}),
 				)
-				return seoRoot
+				return root
 			}(),
 			expected: []*QorSEOSetting{
 				{Name: "Root", Locale: l10n.Locale{LocaleCode: "jp"}},
@@ -219,10 +219,10 @@ func TestSEO_migrate(t *testing.T) {
 		{
 			name:    "migrate_with_empty_locales",
 			locales: []string{},
-			dummyNode: func() *SEO {
-				dummyNode := &SEO{}
-				dummyNode.AppendChildren(&SEO{name: "Root"})
-				return dummyNode
+			seoRoot: func() *SEO {
+				seoRoot := &SEO{}
+				seoRoot.AppendChildren(&SEO{name: "Root"})
+				return seoRoot
 			}(),
 			expected: []*QorSEOSetting{
 				{Name: "Root"},
@@ -235,13 +235,13 @@ func TestSEO_migrate(t *testing.T) {
 				c.prepareDB()
 			} else {
 				resetDB()
-				if err := GlobalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 			}
-			c.dummyNode.migrate(c.locales)
+			c.seoRoot.migrate(c.locales)
 			var seoSettings []*QorSEOSetting
-			GlobalDB.Select("name", "locale_code", "setting", "variables").Find(&seoSettings)
+			globalDB.Select("name", "locale_code", "setting").Find(&seoSettings)
 			if len(seoSettings) != len(c.expected) {
 				t.Errorf("SEO Setting should be created successfully")
 			}
@@ -546,13 +546,13 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 						},
 					},
 				}
-				if err := GlobalDB.Create(seoSettings).Error; err != nil {
+				if err := globalDB.Create(seoSettings).Error; err != nil {
 					panic(err)
 				}
 			},
 			seo: func() *SEO {
-				// dummyNode --> nodeA --> nodeB --> nodeC
-				dummyNode := &SEO{}
+				// seoRoot --> nodeA --> nodeB --> nodeC
+				seoRoot := &SEO{}
 				nodeA := &SEO{name: "nodeA"}
 				nodeA.RegisterSettingVariables("varA")
 				nodeB := &SEO{name: "nodeB"}
@@ -560,7 +560,7 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 				nodeC := &SEO{name: "nodeC"}
 				// Override the `varB` from the nodeB
 				nodeC.RegisterSettingVariables("varB")
-				dummyNode.AppendChildren(nodeA.AppendChildren(nodeB.AppendChildren(nodeC)))
+				seoRoot.AppendChildren(nodeA.AppendChildren(nodeB.AppendChildren(nodeC)))
 				return nodeC
 			}(),
 			expected: &QorSEOSetting{
@@ -580,7 +580,7 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 				c.prepareDB()
 			}
 			actual := &QorSEOSetting{}
-			seoSetting := c.seo.getFinalQorSEOSetting("", GlobalDB)
+			seoSetting := c.seo.getFinalQorSEOSetting("", globalDB)
 			actual.Name = seoSetting.Name
 			actual.Setting = seoSetting.Setting
 			actual.Variables = seoSetting.Variables
@@ -671,21 +671,6 @@ func TestSEO_getFinalPropFuncForOG(t *testing.T) {
 			},
 			expected: map[string]string{
 				"og:audio": "https://example.com/bond/child.mp3",
-			},
-		},
-		{
-			name: "malformed_prop_name",
-			getSEO: func() *SEO {
-				seoRoot := &SEO{name: "Root"}
-				seoRoot.RegisterPropFuncForOG(
-					&PropFunc{
-						Name: "ogaudio",
-						Func: func(_ interface{}, _ *Setting, _ *http.Request) string {
-							return "ogaudio"
-						},
-					},
-				)
-				return seoRoot
 			},
 		},
 	}

@@ -35,8 +35,8 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 		panic(err)
 	}
 
-	if GlobalDB == nil {
-		GlobalDB = db
+	if globalDB == nil {
+		globalDB = db
 	}
 
 	var locales []string
@@ -45,7 +45,7 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 	}
 
 	// insert records into database
-	b.dummyNode.migrate(locales)
+	b.seoRoot.migrate(locales)
 
 	pb.GetWebBuilder().RegisterEventFunc(saveEvent, b.save)
 
@@ -119,10 +119,10 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nBuilder ...*l1
 				variablesComps = append(variablesComps, fieldComp)
 			}
 		}
-		return VCardText(
+		return h.HTMLComponents{
 			variablesComps,
 			b.vseo("Setting", b.GetSEO(seoSetting.Name), &seoSetting.Setting, ctx.R),
-		)
+		}
 	})
 	pb.FieldDefaults(presets.WRITE).
 		FieldType(Setting{}).
@@ -179,12 +179,7 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 		db          = b.getDBFromContext(ctx.R.Context())
 		locale, _   = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
-	var seo *SEO
-	if qs, ok := obj.(*QorSEOSetting); ok {
-		seo = b.GetSEO(qs.Name)
-	} else {
-		seo = b.GetSEO(obj)
-	}
+	seo := b.GetSEO(obj)
 	if seo == nil {
 		return h.Div()
 	}

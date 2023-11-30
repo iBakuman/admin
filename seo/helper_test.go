@@ -14,7 +14,7 @@ func init() {
 	if db, err := gorm.Open(postgres.Open("user=blog password=123 dbname=blog_dev sslmode=disable host=localhost port=7890"), &gorm.Config{}); err != nil {
 		panic(err)
 	} else {
-		GlobalDB = db
+		globalDB = db
 	}
 }
 
@@ -27,7 +27,7 @@ type Product struct {
 // @snippet_end
 
 func resetDB() {
-	GlobalDB.Exec("truncate qor_seo_settings;")
+	globalDB.Exec("truncate qor_seo_settings;")
 }
 
 func metaEqual(got, want string) bool {

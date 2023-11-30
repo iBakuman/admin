@@ -1356,7 +1356,7 @@ func updateSEO(db *gorm.DB, mb *presets.ModelBuilder) web.EventFunc {
 		if err != nil {
 			return
 		}
-		err = seo.EditSetterFunc(obj, &presets.FieldContext{Name: "seo"}, ctx)
+		err = seo.EditSetterFunc(obj, &presets.FieldContext{Name: "SEO"}, ctx)
 		if err != nil {
 			mb.Editing().UpdateOverlayContent(ctx, &r, obj, "", err)
 			return

@@ -18,7 +18,7 @@ func TestBuilder_Render(t *testing.T) {
 	}
 
 	globalSeoSetting := QorSEOSetting{
-		Name: "Global SEO",
+		Name: defaultGlobalSEOName,
 		Setting: Setting{
 			Title: "global | {{SiteName}}",
 		},
@@ -34,12 +34,12 @@ func TestBuilder_Render(t *testing.T) {
 	}{
 		{
 			name:      "Render Global SEO with setting variables and default context variables",
-			prepareDB: func() { GlobalDB.Save(&globalSeoSetting) },
+			prepareDB: func() { globalDB.Save(&globalSeoSetting) },
 			builder: func() *Builder {
-				builder, _ := newBuilderWithGlobalSEO()
+				builder := NewBuilder()
 				return builder
 			}(),
-			obj: "Global SEO",
+			obj: defaultGlobalSEOName,
 			want: `
 			<title>global | Qor5 dev</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
@@ -48,18 +48,20 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render SEO setting with global setting variables",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
 						Title: "product | {{SiteName}}",
 					},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder, seoRoot := newBuilderWithGlobalSEO()
-				builder.RegisterSEO("Product").SetParent(seoRoot)
+				builder := NewBuilder()
+				builder.GetGlobalSEO().AppendChildren(
+					builder.RegisterSEO("Product"),
+				)
 				return builder
 			}(),
 			obj:  "Product",
@@ -69,7 +71,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render SEO setting with setting and opengraph prop",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -77,10 +79,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder, globalSEO := newBuilderWithGlobalSEO()
+				builder := NewBuilder()
 				builder.RegisterSEO("Product").
 					RegisterSettingVariables("ProductTag ").
 					RegisterPropFuncForOG(
@@ -90,7 +92,7 @@ func TestBuilder_Render(t *testing.T) {
 								return "http://dev.qor5.com/images/logo.png"
 							},
 						},
-					).SetParent(globalSEO)
+					).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: "Product",
@@ -102,16 +104,16 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with global and SEO setting variables",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name:      "Product",
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder, globalSEO := newBuilderWithGlobalSEO()
-				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
+				builder := NewBuilder()
+				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -127,7 +129,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with default SEO setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -135,11 +137,11 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder, globalSEO := newBuilderWithGlobalSEO()
-				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
+				builder := NewBuilder()
+				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -155,7 +157,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with inherit global and SEO setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -163,11 +165,11 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder, globalSEO := newBuilderWithGlobalSEO()
-				builder.RegisterSEO(&Product{}).SetParent(globalSEO)
+				builder := NewBuilder()
+				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -187,7 +189,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting without inherit global and SEO setting",
 			prepareDB: func() {
-				GlobalDB.Save(&globalSeoSetting)
+				globalDB.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -195,10 +197,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				GlobalDB.Save(&product)
+				globalDB.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(DisableInherit())
 				builder.RegisterSEO(&Product{})
 				return builder
 			}(),
@@ -235,26 +237,48 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 		expected map[string]int
 	}{
 		{
-			name: "case 1",
+			name: "with global seo",
 			builder: func() *Builder {
-				builder, globalSEO := newBuilderWithGlobalSEO()
+				builder := NewBuilder()
 				builder.RegisterSEO("PLP").AppendChildren(
 					builder.RegisterSEO("Region"),
 					builder.RegisterSEO("City"),
 					builder.RegisterSEO("Prefecture"),
 				).AppendChildren(
 					builder.RegisterMultipleSEO("Post", "Product")...,
-				).SetParent(globalSEO)
+				)
 				return builder
 			}(),
 			expected: map[string]int{
-				"Global SEO": 1,
-				"PLP":        2,
-				"Post":       3,
-				"Product":    3,
-				"Region":     3,
-				"City":       3,
-				"Prefecture": 3,
+				defaultGlobalSEOName: 1,
+				"PLP":                2,
+				"Post":               3,
+				"Product":            3,
+				"Region":             3,
+				"City":               3,
+				"Prefecture":         3,
+			},
+		},
+		{
+			name: "without global seo",
+			builder: func() *Builder {
+				builder := NewBuilder(DisableGlobalSEO())
+				builder.RegisterSEO("PLP").AppendChildren(
+					builder.RegisterSEO("Region"),
+					builder.RegisterSEO("City"),
+					builder.RegisterSEO("Prefecture"),
+				).AppendChildren(
+					builder.RegisterMultipleSEO("Post", "Product")...,
+				)
+				return builder
+			}(),
+			expected: map[string]int{
+				"PLP":        1,
+				"Post":       2,
+				"Product":    2,
+				"Region":     2,
+				"City":       2,
+				"Prefecture": 2,
 			},
 		},
 	}
@@ -328,7 +352,7 @@ func TestBuilder_SortSEOs(t *testing.T) {
 		expected []*QorSEOSetting
 	}{
 		{
-			name: "test_sort_seo",
+			name: "with global seo",
 			builder: func() *Builder {
 				builder := NewBuilder()
 				builder.RegisterSEO("PLP").AppendChildren(
@@ -343,12 +367,12 @@ func TestBuilder_SortSEOs(t *testing.T) {
 				{Name: "Post"},
 				{Name: "Region"},
 				{Name: "PLP"},
-				{Name: "Global SEO"},
+				{Name: defaultGlobalSEOName},
 				{Name: "City"},
 				{Name: "Prefecture"},
 				{Name: "Product"}},
 			expected: []*QorSEOSetting{
-				{Name: "Global SEO"},
+				{Name: defaultGlobalSEOName},
 				{Name: "PLP"},
 				{Name: "Region"},
 				{Name: "City"},
@@ -367,18 +391,4 @@ func TestBuilder_SortSEOs(t *testing.T) {
 			}
 		})
 	}
-}
-func newBuilderWithGlobalSEO() (*Builder, *SEO) {
-	builder := NewBuilder()
-	globalSEO := builder.RegisterSEO("Global SEO")
-	globalSEO.RegisterSettingVariables("SiteName").
-		RegisterPropFuncForOG(
-			&PropFunc{
-				Name: "og:url",
-				Func: func(_ interface{}, _ *Setting, req *http.Request) string {
-					return req.URL.String()
-				},
-			},
-		)
-	return builder, globalSEO
 }

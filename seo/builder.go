@@ -18,8 +18,9 @@ import (
 )
 
 var (
-	GlobalDB     *gorm.DB
-	DBContextKey contextKey = "DB"
+	defaultGlobalSEOName = "Global SEO"
+	globalDB             *gorm.DB
+	DBContextKey         contextKey = "DBForSEO"
 )
 
 type (
@@ -27,13 +28,80 @@ type (
 	contextVariablesFunc func(interface{}, *Setting, *http.Request) string
 )
 
-func NewBuilder() *Builder {
+type Option func(*Options)
+
+type Options struct {
+	disableGlobalSEO bool
+	globalSEOName    string
+	disableInherit   bool
+}
+
+func (ops *Options) configGlobalSEO(b *Builder) {
+	if ops.disableGlobalSEO {
+		return
+	}
+	var globalSEOName string
+	if ops.globalSEOName != "" {
+		globalSEOName = ops.globalSEOName
+	} else {
+		globalSEOName = defaultGlobalSEOName
+	}
+	globalSEOName = GetSEOName(globalSEOName)
+	if globalSEOName == "" {
+		panic("The global seo name must be not empty")
+	}
+	globalSEO := &SEO{name: globalSEOName}
+	globalSEO.RegisterSettingVariables("SiteName")
+	globalSEO.RegisterPropFuncForOG(&PropFunc{
+		Name: "og:url",
+		Func: func(_ interface{}, _ *Setting, req *http.Request) string {
+			return req.URL.String()
+		},
+	})
+	b.registeredSEO[globalSEOName] = globalSEO
+	b.seoRoot = globalSEO
+}
+
+func (ops *Options) configInherit(b *Builder) {
+	b.inherited = !ops.disableInherit
+}
+
+func DisableGlobalSEO() Option {
+	return func(options *Options) {
+		options.disableGlobalSEO = true
+	}
+}
+
+func DisableInherit() Option {
+	return func(options *Options) {
+		options.disableInherit = true
+	}
+}
+
+func WithGlobalSEOName(name string) Option {
+	return func(options *Options) {
+		options.globalSEOName = name
+	}
+}
+
+func NewBuilder(ops ...Option) *Builder {
+	config := &Options{
+		globalSEOName:    defaultGlobalSEOName,
+		disableGlobalSEO: false,
+		disableInherit:   false,
+	}
+	for _, f := range ops {
+		f(config)
+	}
+
 	b := &Builder{
 		dbContextKey:  DBContextKey,
 		registeredSEO: make(map[string]*SEO),
-		dummyNode:     &SEO{},
+		seoRoot:       &SEO{},
+		inherited:     true,
 	}
-
+	config.configGlobalSEO(b)
+	config.configInherit(b)
 	return b
 }
 
@@ -43,7 +111,8 @@ type Builder struct {
 	// key == val.Name
 	registeredSEO map[string]*SEO
 
-	dummyNode    *SEO
+	seoRoot      *SEO
+	inherited    bool
 	dbContextKey interface{}                                                        // get db from context
 	afterSave    func(ctx context.Context, settingName string, locale string) error // hook called after saving
 }
@@ -68,8 +137,8 @@ func (b *Builder) RegisterMultipleSEO(objs ...interface{}) []*SEO {
 
 // RegisterSEO registers a SEO through name or model.
 // If an SEO already exists, it will panic.
-// The obj parameter can be of type string or a struct type that nested Setting.
-// The default parent of the registered SEO is dummyNode. If you need to set
+// The obj parameter can be of type string or a struct type that embed Setting struct.
+// The default parent of the registered SEO is seoRoot. If you need to set
 // its parent, Please call the SetParent method of SEO after invoking RegisterSEO method.
 // For Example: b.RegisterSEO(&Region{}).SetParent(parentSEO)
 func (b *Builder) RegisterSEO(obj interface{}) *SEO {
@@ -80,13 +149,12 @@ func (b *Builder) RegisterSEO(obj interface{}) *SEO {
 	if seoName == "" {
 		panic("the seo name must not be empty")
 	}
-	b.GetSEO(seoName)
 	if _, isExist := b.registeredSEO[seoName]; isExist {
 		panic(fmt.Sprintf("The %v SEO already exists!", seoName))
 	}
-	// default parent is dummyNode
+	// default parent is seoRoot
 	seo := &SEO{name: seoName}
-	seo.SetParent(b.dummyNode)
+	seo.SetParent(b.seoRoot)
 	if _, ok := obj.(string); !ok { // for model SEO
 		seo.modelTyp = reflect.Indirect(reflect.ValueOf(obj)).Type()
 		isSettingNested := false
@@ -100,7 +168,7 @@ func (b *Builder) RegisterSEO(obj interface{}) *SEO {
 			}
 		}
 		if !isSettingNested {
-			panic("obj must be of type string or struct type that nested Setting")
+			panic("obj must be of type string or struct type that embed Setting struct")
 		}
 	}
 	b.registeredSEO[seoName] = seo
@@ -130,13 +198,20 @@ func (b *Builder) GetSEO(obj interface{}) *SEO {
 	return b.registeredSEO[name]
 }
 
+func (b *Builder) GetGlobalSEO() *SEO {
+	if b.seoRoot.name == "" {
+		panic("The Global SEO is disabled")
+	}
+	return b.seoRoot
+}
+
 // GetSEOPriority gets the priority of the specified SEO,
 // with higher number indicating higher priority.
 // The priority of Global SEO is 1 (the lowest priority)
 func (b *Builder) GetSEOPriority(name string) int {
 	node := b.GetSEO(name)
-	depth := -1
-	for node != nil {
+	depth := 0
+	for node != nil && node.name != "" {
 		node = node.parent
 		depth++
 	}
@@ -157,7 +232,7 @@ func (b *Builder) SortSEOs(SEOs []*QorSEOSetting) {
 			dfs(child)
 		}
 	}
-	dfs(b.dummyNode)
+	dfs(b.seoRoot)
 	sort.Slice(SEOs, func(i, j int) bool {
 		return m[SEOs[i].Name] < m[SEOs[j].Name]
 	})
@@ -193,6 +268,9 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 					if value.Field(i).Type() == reflect.TypeOf(Setting{}) {
 						if tSetting := value.Field(i).Interface().(Setting); tSetting.EnabledCustomize {
 							// if the obj embeds Setting, then overrides `finalSeoSetting.Setting` with `tSetting`
+							if b.inherited {
+								mergeSetting(&finalSeoSetting.Setting, &tSetting)
+							}
 							setting = tSetting
 						}
 						break
@@ -243,7 +321,7 @@ func (b *Builder) getDBFromContext(ctx context.Context) *gorm.DB {
 	if ctxDB := ctx.Value(b.dbContextKey); ctxDB != nil {
 		return ctxDB.(*gorm.DB)
 	}
-	return GlobalDB
+	return globalDB
 }
 
 var regex = regexp.MustCompile("{{([a-zA-Z0-9]*)}}")
@@ -293,7 +371,7 @@ func ContextWithDB(ctx context.Context, db *gorm.DB) context.Context {
 func GetSEOName(obj interface{}) string {
 	switch res := obj.(type) {
 	case string:
-		return res
+		return strings.TrimSpace(res)
 	default:
 		return reflect.Indirect(reflect.ValueOf(obj)).Type().Name()
 	}
