@@ -223,10 +223,9 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 					VExpansionPanelHeader(
 						h.HTMLComponents{
 							VSwitch().
-								Label(msgr.UseDefaults).Attr("ref", "switchComp").
-								Bind("value", "!locals.enabledCustomize").
-								Bind("input-value", "!locals.enabledCustomize").
-								FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "enabledCustomize")),
+								Label(msgr.Customize).Attr("ref", "switchComp").
+								Bind("input-value", "locals.enabledCustomize").
+								FieldName(fmt.Sprintf("%s.%s", fieldPrefix, "EnabledCustomize")),
 						}).
 						Attr("style", "padding: 0px 24px;").HideActions(hideActions).
 						Attr("@click", "locals.enabledCustomize=!locals.enabledCustomize;$refs.switchComp.$emit('change', locals.enabledCustomize)"),
