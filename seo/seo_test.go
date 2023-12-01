@@ -1,10 +1,8 @@
 package seo
 
 import (
-	"github.com/qor5/admin/l10n"
 	"github.com/theplant/testingutils"
 	"net/http"
-	"sort"
 	"testing"
 )
 
@@ -79,7 +77,9 @@ func TestSEO_AddChildren(t *testing.T) {
 					},
 				)
 				child := &SEO{name: "Child"}
-				child.RegisterSettingVariables("ctx1")
+				child.RegisterSettingVariables(struct {
+					ctx1 string
+				}{})
 				rootSeo.AppendChildren(child)
 				return rootSeo
 			},
@@ -133,134 +133,6 @@ func TestSEO_RemoveSelf(t *testing.T) {
 	}
 }
 
-func TestSEO_migrate(t *testing.T) {
-	cases := []struct {
-		name      string
-		prepareDB func()
-		locales   []string
-		seoRoot   *SEO
-		expected  []*QorSEOSetting
-	}{
-		{
-			name: "migrating_with_nil_root",
-			prepareDB: func() {
-				resetDB()
-				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
-					panic(err)
-				}
-			},
-			locales:  []string{"en", "jp", "zh"},
-			seoRoot:  nil,
-			expected: []*QorSEOSetting{},
-		},
-		{
-			name:    "plain",
-			locales: []string{"en", "jp", "zh"},
-			seoRoot: func() *SEO {
-				seoRoot := &SEO{}
-				parent := &SEO{name: "Parent"}
-				seoRoot.AppendChildren(
-					parent.AppendChildren(&SEO{name: "child1"}, &SEO{name: "child2"}),
-				)
-				return seoRoot
-			}(),
-			expected: []*QorSEOSetting{
-				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "en"}},
-				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "jp"}},
-				{Name: "Parent", Locale: l10n.Locale{LocaleCode: "zh"}},
-				{Name: "child1", Locale: l10n.Locale{LocaleCode: "zh"}},
-				{Name: "child1", Locale: l10n.Locale{LocaleCode: "jp"}},
-				{Name: "child1", Locale: l10n.Locale{LocaleCode: "en"}},
-				{Name: "child2", Locale: l10n.Locale{LocaleCode: "zh"}},
-				{Name: "child2", Locale: l10n.Locale{LocaleCode: "jp"}},
-				{Name: "child2", Locale: l10n.Locale{LocaleCode: "en"}},
-			},
-		},
-		{
-			name: "existing_data_before_migrating",
-			prepareDB: func() {
-				resetDB()
-				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
-					panic(err)
-				}
-				seoSetting := QorSEOSetting{
-					Name:   "Root",
-					Locale: l10n.Locale{LocaleCode: "en"},
-					Setting: Setting{
-						Title: "Hello World, Qor5 SEO!",
-					},
-				}
-				if err := dbForTest.Save(&seoSetting).Error; err != nil {
-					panic(err)
-				}
-			},
-			locales: []string{"en", "jp"},
-			seoRoot: func() *SEO {
-				seoRoot := &SEO{}
-				root := &SEO{name: "Root"}
-				seoRoot.AppendChildren(
-					root.AppendChildren(&SEO{name: "Child"}),
-				)
-				return root
-			}(),
-			expected: []*QorSEOSetting{
-				{Name: "Root", Locale: l10n.Locale{LocaleCode: "jp"}},
-				{
-					Name:   "Root",
-					Locale: l10n.Locale{LocaleCode: "en"},
-					Setting: Setting{
-						Title: "Hello World, Qor5 SEO!",
-					},
-				},
-				{Name: "Child", Locale: l10n.Locale{LocaleCode: "en"}},
-				{Name: "Child", Locale: l10n.Locale{LocaleCode: "jp"}},
-			},
-		},
-		{
-			name:    "migrate_with_empty_locales",
-			locales: []string{},
-			seoRoot: func() *SEO {
-				seoRoot := &SEO{}
-				seoRoot.AppendChildren(&SEO{name: "Root"})
-				return seoRoot
-			}(),
-			expected: []*QorSEOSetting{
-				{Name: "Root"},
-			},
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if c.prepareDB != nil {
-				c.prepareDB()
-			} else {
-				resetDB()
-				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
-					panic(err)
-				}
-			}
-			c.seoRoot.migrate(c.locales)
-			var seoSettings []*QorSEOSetting
-			dbForTest.Select("name", "locale_code", "setting").Find(&seoSettings)
-			if len(seoSettings) != len(c.expected) {
-				t.Errorf("SEO Setting should be created successfully")
-			}
-			sort.Slice(seoSettings, func(i, j int) bool {
-				return seoSettings[i].Name < seoSettings[j].Name ||
-					seoSettings[i].Name == seoSettings[j].Name && seoSettings[i].LocaleCode < seoSettings[j].LocaleCode
-			})
-			sort.Slice(c.expected, func(i, j int) bool {
-				return c.expected[i].Name < c.expected[j].Name ||
-					c.expected[i].Name == c.expected[j].Name && c.expected[i].LocaleCode < c.expected[j].LocaleCode
-			})
-			r := testingutils.PrettyJsonDiff(c.expected, seoSettings)
-			if r != "" {
-				t.Errorf(r)
-			}
-		})
-	}
-}
-
 func TestSEO_RegisterContextVariables(t *testing.T) {
 	ctxFunc1 := func(i interface{}, setting *Setting, request *http.Request) string {
 		return "contextFunc1"
@@ -305,7 +177,9 @@ func TestSEO_RegisterContextVariables(t *testing.T) {
 			name: "register_context_var_that_conflicts_with_setting_var",
 			getSeoRoot: func() *SEO {
 				seoRoot := &SEO{name: "Root"}
-				seoRoot.RegisterSettingVariables("ctxFunc1")
+				seoRoot.RegisterSettingVariables(struct {
+					ctxFunc1 string
+				}{})
 				child := &SEO{name: "Child"}
 				child.SetParent(seoRoot).RegisterContextVariables(&ContextVar{Name: "ctxFunc1", Func: ctxFunc1})
 				return seoRoot
@@ -381,7 +255,9 @@ func TestSEO_RegisterSettingVariables(t *testing.T) {
 			name: "register_setting_var",
 			getSeoRoot: func() *SEO {
 				seoRoot := &SEO{name: "Root"}
-				seoRoot.RegisterSettingVariables("Var1")
+				seoRoot.RegisterSettingVariables(struct {
+					Var1 string
+				}{})
 				return seoRoot
 			},
 			expected: map[string]map[string]struct{}{
@@ -394,7 +270,9 @@ func TestSEO_RegisterSettingVariables(t *testing.T) {
 				seoRoot := &SEO{name: "Root"}
 				seoRoot.RegisterContextVariables(&ContextVar{Name: "c1", Func: ctxFunc1})
 				child := &SEO{name: "Child"}
-				child.SetParent(seoRoot).RegisterSettingVariables("c1")
+				child.SetParent(seoRoot).RegisterSettingVariables(struct {
+					c1 string
+				}{})
 				return seoRoot
 			},
 			shouldPanic: true,
@@ -409,7 +287,9 @@ func TestSEO_RegisterSettingVariables(t *testing.T) {
 						Func: ctxFunc1,
 					},
 				).AppendChildren(
-					(&SEO{name: "Child1"}).RegisterSettingVariables("ctx1"),
+					(&SEO{name: "Child1"}).RegisterSettingVariables(struct {
+						ctx1 string
+					}{}),
 				)
 				return seoRoot
 			},
@@ -554,12 +434,18 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 				// seoRoot --> nodeA --> nodeB --> nodeC
 				seoRoot := &SEO{}
 				nodeA := &SEO{name: "nodeA"}
-				nodeA.RegisterSettingVariables("varA")
+				nodeA.RegisterSettingVariables(struct {
+					varA string
+				}{})
 				nodeB := &SEO{name: "nodeB"}
-				nodeB.RegisterSettingVariables("varB")
+				nodeB.RegisterSettingVariables(struct {
+					varB string
+				}{})
 				nodeC := &SEO{name: "nodeC"}
 				// Override the `varB` from the nodeB
-				nodeC.RegisterSettingVariables("varB")
+				nodeC.RegisterSettingVariables(struct {
+					varB string
+				}{})
 				seoRoot.AppendChildren(nodeA.AppendChildren(nodeB.AppendChildren(nodeC)))
 				return nodeC
 			}(),

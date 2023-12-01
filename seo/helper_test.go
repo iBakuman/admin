@@ -11,7 +11,6 @@ import (
 var dbForTest *gorm.DB
 
 func init() {
-	// TODO: RESET
 	// if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
 	if db, err := gorm.Open(postgres.Open("user=blog password=123 dbname=blog_dev sslmode=disable host=localhost port=7890"), &gorm.Config{}); err != nil {
 		panic(err)

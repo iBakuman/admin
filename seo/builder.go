@@ -54,7 +54,9 @@ func WithLocales(locales ...string) Option {
 
 func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
 	seoRoot := &SEO{name: defaultGlobalSEOName}
-	seoRoot.RegisterSettingVariables("SiteName")
+	seoRoot.RegisterSettingVariables(struct {
+		SiteName string
+	}{})
 	seoRoot.RegisterPropFuncForOG(&PropFunc{
 		Name: "og:url",
 		Func: func(_ interface{}, _ *Setting, req *http.Request) string {

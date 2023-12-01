@@ -1,6 +1,7 @@
 package seo
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -28,12 +29,18 @@ const (
 var permVerifier *perm.Verifier
 
 type myTd struct {
-	*h.HTMLTagBuilder
+	td    *h.HTMLTagBuilder
 	child h.MutableAttrHTMLComponent
 }
 
-func (td *myTd) SetAttr(k string, v interface{}) {
-	td.child.SetAttr(k, v)
+func (mtd *myTd) SetAttr(k string, v interface{}) {
+	mtd.td.SetAttr(k, v)
+	mtd.child.SetAttr(k, v)
+}
+
+func (mtd *myTd) MarshalHTML(ctx context.Context) ([]byte, error) {
+	mtd.td.Children(mtd.child)
+	return mtd.td.MarshalHTML(ctx)
 }
 
 func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder) {
@@ -75,8 +82,8 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 		seo := obj.(*QorSEOSetting)
 		icon := "folder"
 		priority := b.GetSEOPriority(seo.Name)
-		return myTd{
-			HTMLTagBuilder: h.Td(),
+		return &myTd{
+			td: h.Td(),
 			child: h.Div(
 				VIcon(icon).Small(true).Class("mb-1"),
 				h.Text(seo.Name),

@@ -2,18 +2,9 @@ package seo
 
 import (
 	"fmt"
-	"github.com/qor5/admin/l10n"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"reflect"
 	"strings"
-)
-
-type ContextVarType int
-
-const (
-	OpenGraph ContextVarType = iota
-	Plain
 )
 
 // SEO represents a SEO object for a page
@@ -40,7 +31,7 @@ type SEO struct {
 	// [The Optional Metadata for Open Graph Protocol](https://ogp.me/#optional)
 	propFuncForOG map[string]contextVariablesFunc
 
-	// Dynamically retrieve the content that replace the placeholders with its value
+	// Dynamically retrieve the content that replaces the placeholders with its value
 	contextVars map[string]contextVariablesFunc
 
 	// Replace the placeholders within {{}} with the values from the variable field in the database.
@@ -127,6 +118,7 @@ func (seo *SEO) SetParent(newParent *SEO) *SEO {
 	for varName := range seo.settingVars {
 		seo.checkConflict(varName, false)
 	}
+
 	for varName := range seo.contextVars {
 		seo.checkConflict(varName, true)
 	}
@@ -185,20 +177,21 @@ func (seo *SEO) RegisterContextVariables(contextVars ...*ContextVar) *SEO {
 	return seo
 }
 
-func (seo *SEO) RegisterSettingVariables(names ...string) *SEO {
+func (seo *SEO) RegisterSettingVariables(settingVars interface{}) *SEO {
 	if seo == nil {
 		return seo
 	}
 	if seo.settingVars == nil {
 		seo.settingVars = make(map[string]struct{})
 	}
-	for _, name := range names {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			panic("The name of setting var must not be empty")
-		}
-		seo.checkConflict(name, false)
-		seo.settingVars[name] = struct{}{}
+	tType := reflect.Indirect(reflect.ValueOf(settingVars)).Type()
+	if tType.Kind() != reflect.Struct {
+		panic("The setting vars must be of type struct")
+	}
+	for i := 0; i < tType.NumField(); i++ {
+		fieldName := tType.Field(i).Name
+		seo.checkConflict(fieldName, false)
+		seo.settingVars[fieldName] = struct{}{}
 	}
 	return seo
 }
@@ -269,52 +262,11 @@ func (seo *SEO) getAvailableVars() map[string]struct{} {
 		for varName := range seo.contextVars {
 			seo.finalAvailableVarsCache[varName] = struct{}{}
 		}
-		for varName, val := range seo.parent.getAvailableVars() {
-			seo.finalAvailableVarsCache[varName] = val
+		for varName := range seo.parent.getAvailableVars() {
+			seo.finalAvailableVarsCache[varName] = struct{}{}
 		}
 		return seo.finalAvailableVarsCache
 	}
-}
-
-func (seo *SEO) migrate(locales []string) {
-	if seo == nil {
-		return
-	}
-
-	// Checking `seo.name != nil` is to avoid create records with empty name
-	// when the current node is the dummy node
-	if seo.name != "" {
-		settings := make([]QorSEOSetting, 0, len(locales))
-		variables := make(map[string]string)
-		for varName := range seo.settingVars {
-			variables[varName] = ""
-		}
-		if len(locales) == 0 {
-			settings = append(settings, QorSEOSetting{
-				Name:      seo.name,
-				Variables: variables,
-				Locale:    l10n.Locale{LocaleCode: "empty"},
-			})
-		} else {
-			for _, locale := range locales {
-				settings = append(settings, QorSEOSetting{
-					Name:      seo.name,
-					Locale:    l10n.Locale{LocaleCode: locale},
-					Variables: variables,
-				})
-			}
-		}
-		// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
-		// or cause the create function to fail When the data to be inserted already exists in the database,
-		if err := dbForTest.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
-			panic(err)
-		}
-	}
-
-	for _, child := range seo.children {
-		child.migrate(locales)
-	}
-	return
 }
 
 func (seo *SEO) getFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting {

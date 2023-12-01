@@ -1176,7 +1176,7 @@ func (b *ListingBuilder) getTableComponents(
 					Query(ParamInDialog, true).
 					Query(ParamListingQueries, ctx.Queries().Encode())
 			}
-			tdbind.SetAttr("@click",
+			tdbind.SetAttr("@click.self",
 				onclick.Go()+fmt.Sprintf(`; vars.currEditingListItemID="%s-%s"`, dataTableID, id))
 		}
 		return tdbind

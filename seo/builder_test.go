@@ -84,7 +84,9 @@ func TestBuilder_Render(t *testing.T) {
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO("Product").
-					RegisterSettingVariables("ProductTag ").
+					RegisterSettingVariables(struct {
+						ProductTag string
+					}{}).
 					RegisterPropFuncForOG(
 						&PropFunc{
 							Name: "og:image",
@@ -259,28 +261,6 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 				"Prefecture":         3,
 			},
 		},
-		{
-			name: "without global seo",
-			builder: func() *Builder {
-				builder := NewBuilder(dbForTest)
-				builder.RegisterSEO("PLP").AppendChildren(
-					builder.RegisterSEO("Region"),
-					builder.RegisterSEO("City"),
-					builder.RegisterSEO("Prefecture"),
-				).AppendChildren(
-					builder.RegisterMultipleSEO("Post", "Product")...,
-				)
-				return builder
-			}(),
-			expected: map[string]int{
-				"PLP":        1,
-				"Post":       2,
-				"Product":    2,
-				"Region":     2,
-				"City":       2,
-				"Prefecture": 2,
-			},
-		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -302,7 +282,7 @@ func TestBuilder_RemoveSEO(t *testing.T) {
 	}{{
 		name: "test remove SEO",
 		builder: func() *Builder {
-			builder := NewBuilder()
+			builder := NewBuilder(dbForTest)
 			builder.RegisterSEO("Parent1").AppendChildren(
 				builder.RegisterSEO("Son1"),
 				builder.RegisterSEO("Son2"),
@@ -311,7 +291,7 @@ func TestBuilder_RemoveSEO(t *testing.T) {
 			return builder
 		}(),
 		expected: func() *Builder {
-			builder := NewBuilder()
+			builder := NewBuilder(dbForTest)
 			builder.RegisterMultipleSEO("Son1", "Son2")
 			return builder
 		}(),
@@ -354,7 +334,7 @@ func TestBuilder_SortSEOs(t *testing.T) {
 		{
 			name: "with global seo",
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO("PLP").AppendChildren(
 					builder.RegisterSEO("Region"),
 					builder.RegisterSEO("City"),
