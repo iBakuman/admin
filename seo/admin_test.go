@@ -17,22 +17,22 @@ import (
 
 func TestAdmin(t *testing.T) {
 	var (
-		admin  = presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(globalDB))
+		admin  = presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(dbForTest))
 		server = httptest.NewServer(admin)
 	)
 
-	builder := NewBuilder()
+	builder := NewBuilder(dbForTest, WithLocales("en"))
 	builder.RegisterMultipleSEO("Product Detail", "Product")
 	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
-	builder.Configure(admin, globalDB, l10nBuilder.GetSupportLocaleCodes()...)
-	l10n_view.Configure(admin, globalDB, l10nBuilder, nil)
+	builder.Configure(admin)
+	l10n_view.Configure(admin, dbForTest, l10nBuilder, nil)
 	if req, err := http.Get(server.URL + "/admin/qor-seo-settings?__execute_event__=__reload__&locale=en"); err == nil {
 		if req.StatusCode != 200 {
 			t.Errorf("Setting page should be exist, status code is %v", req.StatusCode)
 		}
 
 		var seoSetting []*QorSEOSetting
-		globalDB.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", defaultGlobalSEOName})
+		dbForTest.Find(&seoSetting, "name in (?)", []string{"Product Detail", "Product", defaultGlobalSEOName})
 
 		if len(seoSetting) != 3 {
 			t.Errorf("SEO Setting should be created successfully")
@@ -65,7 +65,7 @@ func TestAdmin(t *testing.T) {
 	}
 
 	seoSetting := &QorSEOSetting{}
-	err = globalDB.First(seoSetting, "name = ?", "Product").Error
+	err = dbForTest.First(seoSetting, "name = ?", "Product").Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Errorf("SEO Setting should be created successfully")
 	}

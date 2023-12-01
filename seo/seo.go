@@ -306,7 +306,7 @@ func (seo *SEO) migrate(locales []string) {
 		}
 		// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
 		// or cause the create function to fail When the data to be inserted already exists in the database,
-		if err := globalDB.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
+		if err := dbForTest.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
 			panic(err)
 		}
 	}

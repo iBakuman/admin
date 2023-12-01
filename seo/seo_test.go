@@ -145,7 +145,7 @@ func TestSEO_migrate(t *testing.T) {
 			name: "migrating_with_nil_root",
 			prepareDB: func() {
 				resetDB()
-				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 			},
@@ -180,7 +180,7 @@ func TestSEO_migrate(t *testing.T) {
 			name: "existing_data_before_migrating",
 			prepareDB: func() {
 				resetDB()
-				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 				seoSetting := QorSEOSetting{
@@ -190,7 +190,7 @@ func TestSEO_migrate(t *testing.T) {
 						Title: "Hello World, Qor5 SEO!",
 					},
 				}
-				if err := globalDB.Save(&seoSetting).Error; err != nil {
+				if err := dbForTest.Save(&seoSetting).Error; err != nil {
 					panic(err)
 				}
 			},
@@ -235,13 +235,13 @@ func TestSEO_migrate(t *testing.T) {
 				c.prepareDB()
 			} else {
 				resetDB()
-				if err := globalDB.AutoMigrate(&QorSEOSetting{}); err != nil {
+				if err := dbForTest.AutoMigrate(&QorSEOSetting{}); err != nil {
 					panic(err)
 				}
 			}
 			c.seoRoot.migrate(c.locales)
 			var seoSettings []*QorSEOSetting
-			globalDB.Select("name", "locale_code", "setting").Find(&seoSettings)
+			dbForTest.Select("name", "locale_code", "setting").Find(&seoSettings)
 			if len(seoSettings) != len(c.expected) {
 				t.Errorf("SEO Setting should be created successfully")
 			}
@@ -546,7 +546,7 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 						},
 					},
 				}
-				if err := globalDB.Create(seoSettings).Error; err != nil {
+				if err := dbForTest.Create(seoSettings).Error; err != nil {
 					panic(err)
 				}
 			},
@@ -580,7 +580,7 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 				c.prepareDB()
 			}
 			actual := &QorSEOSetting{}
-			seoSetting := c.seo.getFinalQorSEOSetting("", globalDB)
+			seoSetting := c.seo.getFinalQorSEOSetting("", dbForTest)
 			actual.Name = seoSetting.Name
 			actual.Setting = seoSetting.Setting
 			actual.Variables = seoSetting.Variables

@@ -3,6 +3,7 @@ package seo
 import (
 	"context"
 	"fmt"
+	"gorm.io/gorm/clause"
 	"net/http"
 	"net/url"
 	"path"
@@ -19,89 +20,62 @@ import (
 
 var (
 	defaultGlobalSEOName = "Global SEO"
-	globalDB             *gorm.DB
-	DBContextKey         contextKey = "DBForSEO"
 )
 
 type (
-	contextKey           string
 	contextVariablesFunc func(interface{}, *Setting, *http.Request) string
 )
 
-type Option func(*Options)
+type Option func(*Builder)
 
-type Options struct {
-	disableGlobalSEO bool
-	globalSEOName    string
-	disableInherit   bool
+func WithInherit(inherited bool) Option {
+	return func(b *Builder) {
+		b.inherited = inherited
+	}
 }
 
-func (ops *Options) configGlobalSEO(b *Builder) {
-	if ops.disableGlobalSEO {
-		return
+func WithGlobalSEOName(name string) Option {
+	return func(b *Builder) {
+		name = GetSEOName(name)
+		if name == "" {
+			panic("The global seo name must be not empty")
+		}
+		b.seoRoot.name = name
+		delete(b.registeredSEO, defaultGlobalSEOName)
+		b.registeredSEO[name] = b.seoRoot
 	}
-	var globalSEOName string
-	if ops.globalSEOName != "" {
-		globalSEOName = ops.globalSEOName
-	} else {
-		globalSEOName = defaultGlobalSEOName
+}
+
+func WithLocales(locales ...string) Option {
+	return func(b *Builder) {
+		b.locales = locales
 	}
-	globalSEOName = GetSEOName(globalSEOName)
-	if globalSEOName == "" {
-		panic("The global seo name must be not empty")
-	}
-	globalSEO := &SEO{name: globalSEOName}
-	globalSEO.RegisterSettingVariables("SiteName")
-	globalSEO.RegisterPropFuncForOG(&PropFunc{
+}
+
+func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
+	seoRoot := &SEO{name: defaultGlobalSEOName}
+	seoRoot.RegisterSettingVariables("SiteName")
+	seoRoot.RegisterPropFuncForOG(&PropFunc{
 		Name: "og:url",
 		Func: func(_ interface{}, _ *Setting, req *http.Request) string {
 			return req.URL.String()
 		},
 	})
-	b.registeredSEO[globalSEOName] = globalSEO
-	b.seoRoot = globalSEO
-}
-
-func (ops *Options) configInherit(b *Builder) {
-	b.inherited = !ops.disableInherit
-}
-
-func DisableGlobalSEO() Option {
-	return func(options *Options) {
-		options.disableGlobalSEO = true
-	}
-}
-
-func DisableInherit() Option {
-	return func(options *Options) {
-		options.disableInherit = true
-	}
-}
-
-func WithGlobalSEOName(name string) Option {
-	return func(options *Options) {
-		options.globalSEOName = name
-	}
-}
-
-func NewBuilder(ops ...Option) *Builder {
-	config := &Options{
-		globalSEOName:    defaultGlobalSEOName,
-		disableGlobalSEO: false,
-		disableInherit:   false,
-	}
-	for _, f := range ops {
-		f(config)
-	}
-
 	b := &Builder{
-		dbContextKey:  DBContextKey,
 		registeredSEO: make(map[string]*SEO),
-		seoRoot:       &SEO{},
+		seoRoot:       seoRoot,
 		inherited:     true,
+		db:            db,
 	}
-	config.configGlobalSEO(b)
-	config.configInherit(b)
+	b.registeredSEO[defaultGlobalSEOName] = b.seoRoot
+
+	for _, opFunc := range ops {
+		opFunc(b)
+	}
+
+	if err := db.AutoMigrate(&QorSEOSetting{}); err != nil {
+		panic(err)
+	}
 	return b
 }
 
@@ -111,6 +85,8 @@ type Builder struct {
 	// key == val.Name
 	registeredSEO map[string]*SEO
 
+	locales      []string
+	db           *gorm.DB
 	seoRoot      *SEO
 	inherited    bool
 	dbContextKey interface{}                                                        // get db from context
@@ -118,12 +94,6 @@ type Builder struct {
 }
 
 // @snippet_end
-
-// SetDBContextKey sets the key to get db instance from context
-func (b *Builder) SetDBContextKey(key interface{}) *Builder {
-	b.dbContextKey = key
-	return b
-}
 
 // RegisterMultipleSEO registers multiple SEOs.
 // It calls RegisterSEO to accomplish its functionality.
@@ -172,6 +142,25 @@ func (b *Builder) RegisterSEO(obj interface{}) *SEO {
 		}
 	}
 	b.registeredSEO[seoName] = seo
+	settings := make([]QorSEOSetting, 0, len(b.locales))
+	if len(b.locales) == 0 {
+		settings = append(settings, QorSEOSetting{
+			Name:   seo.name,
+			Locale: l10n.Locale{LocaleCode: "en"},
+		})
+	} else {
+		for _, locale := range b.locales {
+			settings = append(settings, QorSEOSetting{
+				Name:   seo.name,
+				Locale: l10n.Locale{LocaleCode: locale},
+			})
+		}
+	}
+	// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
+	// or cause the create function to fail When the data to be inserted already exists in the database,
+	if err := b.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&settings).Error; err != nil {
+		panic(err)
+	}
 	return seo
 }
 
@@ -199,9 +188,6 @@ func (b *Builder) GetSEO(obj interface{}) *SEO {
 }
 
 func (b *Builder) GetGlobalSEO() *SEO {
-	if b.seoRoot.name == "" {
-		panic("The Global SEO is disabled")
-	}
 	return b.seoRoot
 }
 
@@ -255,7 +241,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 		locale = v.GetLocale()
 	}
 
-	db := b.getDBFromContext(req.Context())
+	db := b.db
 	finalSeoSetting := seo.getFinalQorSEOSetting(locale, db)
 
 	// get setting
@@ -316,14 +302,6 @@ func (b *Builder) BatchRender(models []interface{}) ([]h.HTMLComponent, error) {
 	return nil, nil
 }
 
-// getDBFromContext get the db from the ctx
-func (b *Builder) getDBFromContext(ctx context.Context) *gorm.DB {
-	if ctxDB := ctx.Value(b.dbContextKey); ctxDB != nil {
-		return ctxDB.(*gorm.DB)
-	}
-	return globalDB
-}
-
 var regex = regexp.MustCompile("{{([a-zA-Z0-9]*)}}")
 
 func replaceVariables(setting Setting, values map[string]string) Setting {
@@ -359,10 +337,6 @@ func isAbsoluteURL(str string) bool {
 		return true
 	}
 	return false
-}
-
-func ContextWithDB(ctx context.Context, db *gorm.DB) context.Context {
-	return context.WithValue(ctx, DBContextKey, db)
 }
 
 // GetSEOName return the SEO name.

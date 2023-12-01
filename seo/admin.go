@@ -19,7 +19,6 @@ import (
 	"github.com/sunfmin/reflectutils"
 	h "github.com/theplant/htmlgo"
 	"golang.org/x/text/language"
-	"gorm.io/gorm"
 )
 
 const (
@@ -28,18 +27,16 @@ const (
 
 var permVerifier *perm.Verifier
 
-func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, locales ...string) (seoModel *presets.ModelBuilder) {
-	if err := db.AutoMigrate(&QorSEOSetting{}); err != nil {
-		panic(err)
-	}
+type myTd struct {
+	*h.HTMLTagBuilder
+	child h.MutableAttrHTMLComponent
+}
 
-	if globalDB == nil {
-		globalDB = db
-	}
+func (td *myTd) SetAttr(k string, v interface{}) {
+	td.child.SetAttr(k, v)
+}
 
-	// insert records into database
-	b.seoRoot.migrate(locales)
-
+func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder) {
 	// The registration of FieldDefaults for writing Setting here
 	// must be executed before `pb.Model(&QorSEOSetting{})...`,
 	pb.FieldDefaults(presets.WRITE).
@@ -65,7 +62,7 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, locales ...string)
 
 func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 	listing := seoModel.Listing("Name")
-	// disable new btn globally, no one can add new SEO record after server start up.
+	// disable new btn globally, no one can add new SEO record after the server start up.
 	listing.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
 		return nil
 	})
@@ -78,12 +75,13 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 		seo := obj.(*QorSEOSetting)
 		icon := "folder"
 		priority := b.GetSEOPriority(seo.Name)
-		return h.Td(
-			h.Div(
+		return myTd{
+			HTMLTagBuilder: h.Td(),
+			child: h.Div(
 				VIcon(icon).Small(true).Class("mb-1"),
 				h.Text(seo.Name),
 			).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
-		)
+		}
 	})
 
 	oldSearcher := listing.Searcher
@@ -180,7 +178,7 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 		msgr        = i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
 		fieldPrefix string
 		setting     Setting
-		db          = b.getDBFromContext(ctx.R.Context())
+		db          = b.db
 		locale, _   = l10n.IsLocalizableFromCtx(ctx.R.Context())
 	)
 	seo := b.GetSEO(obj)
@@ -240,7 +238,7 @@ func (b *Builder) EditingComponentFunc(obj interface{}, field *presets.FieldCont
 func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http.Request) h.HTMLComponent {
 	var (
 		msgr = i18n.MustGetModuleMessages(req, I18nSeoKey, Messages_en_US).(*Messages)
-		db   = b.getDBFromContext(req.Context())
+		db   = b.db
 	)
 
 	var varComps []h.HTMLComponent
@@ -318,7 +316,7 @@ func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http
 
 func (b *Builder) save(ctx *web.EventContext) (r web.EventResponse, err error) {
 	var (
-		db        = b.getDBFromContext(ctx.R.Context())
+		db        = b.db
 		name      = ctx.R.FormValue("name")
 		setting   = &QorSEOSetting{}
 		locale, _ = l10n.IsLocalizableFromCtx(ctx.R.Context())

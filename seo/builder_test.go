@@ -34,9 +34,9 @@ func TestBuilder_Render(t *testing.T) {
 	}{
 		{
 			name:      "Render Global SEO with setting variables and default context variables",
-			prepareDB: func() { globalDB.Save(&globalSeoSetting) },
+			prepareDB: func() { dbForTest.Save(&globalSeoSetting) },
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				return builder
 			}(),
 			obj: defaultGlobalSEOName,
@@ -48,17 +48,17 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render SEO setting with global setting variables",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
 						Title: "product | {{SiteName}}",
 					},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.GetGlobalSEO().AppendChildren(
 					builder.RegisterSEO("Product"),
 				)
@@ -71,7 +71,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render SEO setting with setting and opengraph prop",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -79,10 +79,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO("Product").
 					RegisterSettingVariables("ProductTag ").
 					RegisterPropFuncForOG(
@@ -104,15 +104,15 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with global and SEO setting variables",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name:      "Product",
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
@@ -129,7 +129,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with default SEO setting",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -137,10 +137,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
@@ -157,7 +157,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting with inherit global and SEO setting",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -165,10 +165,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
@@ -189,7 +189,7 @@ func TestBuilder_Render(t *testing.T) {
 		{
 			name: "Render model setting without inherit global and SEO setting",
 			prepareDB: func() {
-				globalDB.Save(&globalSeoSetting)
+				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
 					Name: "Product",
 					Setting: Setting{
@@ -197,10 +197,10 @@ func TestBuilder_Render(t *testing.T) {
 					},
 					Variables: map[string]string{"ProductTag": "Men"},
 				}
-				globalDB.Save(&product)
+				dbForTest.Save(&product)
 			},
 			builder: func() *Builder {
-				builder := NewBuilder(DisableInherit())
+				builder := NewBuilder(dbForTest, WithInherit(false))
 				builder.RegisterSEO(&Product{})
 				return builder
 			}(),
@@ -239,7 +239,7 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 		{
 			name: "with global seo",
 			builder: func() *Builder {
-				builder := NewBuilder()
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO("PLP").AppendChildren(
 					builder.RegisterSEO("Region"),
 					builder.RegisterSEO("City"),
@@ -262,7 +262,7 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 		{
 			name: "without global seo",
 			builder: func() *Builder {
-				builder := NewBuilder(DisableGlobalSEO())
+				builder := NewBuilder(dbForTest)
 				builder.RegisterSEO("PLP").AppendChildren(
 					builder.RegisterSEO("Region"),
 					builder.RegisterSEO("City"),
