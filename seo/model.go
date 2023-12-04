@@ -35,7 +35,7 @@ func (s *QorSEOSetting) PrimaryColumnValuesBySlug(slug string) map[string]string
 		panic("wrong slug")
 	}
 	if segs[1] == "" {
-		segs[1] = "empty"
+		segs[1] = "en"
 	}
 	return map[string]string{
 		"name":        segs[0],

@@ -55,7 +55,7 @@ func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder
 
 	// Configure Listing Page
 	b.configListing(seoModel)
-	// Configure Editing
+	// Configure Editing Page
 	b.configEditing(seoModel)
 
 	pb.I18n().
@@ -78,18 +78,20 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 	listing.RowMenu().Empty()
 
 	// Configure the indentation for Name field to display hierarchy.
-	listing.Field("Name").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
-		seo := obj.(*QorSEOSetting)
-		icon := "folder"
-		priority := b.GetSEOPriority(seo.Name)
-		return &myTd{
-			td: h.Td(),
-			child: h.Div(
-				VIcon(icon).Small(true).Class("mb-1"),
-				h.Text(seo.Name),
-			).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
-		}
-	})
+	listing.Field("Name").ComponentFunc(
+		func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+			seo := obj.(*QorSEOSetting)
+			icon := "folder"
+			priority := b.GetSEOPriority(seo.Name)
+			return &myTd{
+				td: h.Td(),
+				child: h.Div(
+					VIcon(icon).Small(true).Class("mb-1"),
+					h.Text(seo.Name),
+				).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
+			}
+		},
+	)
 
 	oldSearcher := listing.Searcher
 	listing.SearchFunc(func(model interface{}, params *presets.SearchParams, ctx *web.EventContext) (r interface{}, totalCount int, err error) {
@@ -110,8 +112,11 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 }
 
 func (b *Builder) configEditing(seoModel *presets.ModelBuilder) {
-	editing := seoModel.Editing("Setting")
+	editing := seoModel.Editing("Variables", "Setting")
 	oldSaver := editing.Saver
+
+	// Customize the Saver to trigger the invocation of the `afterSave` hook function (if available)
+	// when updating the global seo.
 	editing.Saver = func(obj interface{}, id string, ctx *web.EventContext) (err error) {
 		seoSetting := obj.(*QorSEOSetting)
 		if err := oldSaver(obj, id, ctx); err != nil {
@@ -125,26 +130,54 @@ func (b *Builder) configEditing(seoModel *presets.ModelBuilder) {
 		return nil
 	}
 
-	editing.Field("Setting").ComponentFunc(func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
-		seoSetting := obj.(*QorSEOSetting)
-		msgr := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
-		settingVars := b.GetSEO(seoSetting.Name).settingVars
-		var variablesComps h.HTMLComponents
-		if len(settingVars) > 0 {
-			variablesComps = append(variablesComps, h.H3(msgr.Variable).Style("margin-top:15px;font-weight: 500"))
-			for varName, _ := range settingVars {
-				fieldComp := VTextField().
-					FieldName(fmt.Sprintf("%s.Variables.%s", seoSetting.Name, varName)).
-					Label(i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo Variable", varName)).
-					Value(seoSetting.Variables[varName])
-				variablesComps = append(variablesComps, fieldComp)
-			}
-		}
-		return h.HTMLComponents{
-			variablesComps,
-			b.vseo("Setting", b.GetSEO(seoSetting.Name), &seoSetting.Setting, ctx.R),
-		}
-	})
+	// configure variables field
+	{
+		const formKeyForVariablesField = "Variables"
+		editing.Field("Variables").ComponentFunc(
+			func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+				seoSetting := obj.(*QorSEOSetting)
+				msgr := i18n.MustGetModuleMessages(ctx.R, I18nSeoKey, Messages_en_US).(*Messages)
+				settingVars := b.GetSEO(seoSetting.Name).settingVars
+				var variablesComps h.HTMLComponents
+				if len(settingVars) > 0 {
+					variablesComps = append(variablesComps, h.H3(msgr.Variable).Style("margin-top:15px;font-weight: 500"))
+					for varName, _ := range settingVars {
+						fieldComp := VTextField().
+							FieldName(fmt.Sprintf("%s.%s", formKeyForVariablesField, varName)).
+							Label(i18n.PT(ctx.R, presets.ModelsI18nModuleKey, "Seo Variable", varName)).
+							Value(seoSetting.Variables[varName])
+						variablesComps = append(variablesComps, fieldComp)
+					}
+				}
+				return variablesComps
+			},
+		)
+		// Because the Variables type is of map type, you need to configure the setter func by yourself.
+		// If not configured, it will cause the updated valued to not be written to the database.
+		editing.Field("Variables").SetterFunc(
+			func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) (err error) {
+				seoSetting := obj.(*QorSEOSetting)
+				if seoSetting.Variables == nil {
+					seoSetting.Variables = make(Variables)
+				}
+				for fieldName := range ctx.R.Form {
+					if strings.HasPrefix(fieldName, formKeyForVariablesField) {
+						varName := strings.TrimPrefix(fieldName, formKeyForVariablesField+".")
+						val := ctx.R.Form[fieldName][0]
+						seoSetting.Variables[varName] = val
+					}
+				}
+				return nil
+			},
+		)
+	}
+
+	editing.Field("Setting").ComponentFunc(
+		func(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) h.HTMLComponent {
+			seoSetting := obj.(*QorSEOSetting)
+			return b.vseo("Setting", b.GetSEO(seoSetting.Name), &seoSetting.Setting, ctx.R)
+		},
+	)
 }
 
 func EditSetterFunc(obj interface{}, field *presets.FieldContext, ctx *web.EventContext) (err error) {
@@ -318,90 +351,4 @@ func (b *Builder) vseo(fieldPrefix string, seo *SEO, setting *Setting, req *http
 			),
 		).Outlined(true).Flat(true),
 	).Attr("ref", "seo")
-}
-
-func (b *Builder) save(ctx *web.EventContext) (r web.EventResponse, err error) {
-	var (
-		db        = b.db
-		name      = ctx.R.FormValue("name")
-		setting   = &QorSEOSetting{}
-		locale, _ = l10n.IsLocalizableFromCtx(ctx.R.Context())
-	)
-
-	if err = db.Where("name = ? AND locale_code = ?", name, locale).First(setting).Error; err != nil {
-		return
-	}
-
-	var (
-		variables   = map[string]string{}
-		settingVals = map[string]interface{}{}
-		mediaBox    = media_library.MediaBox{}
-	)
-
-	for fieldWithPrefix := range ctx.R.Form {
-		if !strings.HasPrefix(fieldWithPrefix, name) {
-			continue
-		}
-		field := strings.Replace(fieldWithPrefix, fmt.Sprintf("%s.", name), "", -1)
-		// make sure OpenGraphImageFromMediaLibrary.Description set after OpenGraphImageFromMediaLibrary.Values
-		if field == "OpenGraphImageFromMediaLibrary.Values" {
-			err = mediaBox.Scan(ctx.R.FormValue(fieldWithPrefix))
-			if err != nil {
-				return
-			}
-			break
-		}
-	}
-
-	for fieldWithPrefix := range ctx.R.Form {
-		if !strings.HasPrefix(fieldWithPrefix, name) {
-			continue
-		}
-		field := strings.Replace(fieldWithPrefix, fmt.Sprintf("%s.", name), "", -1)
-		if strings.HasPrefix(field, "OpenGraphImageFromMediaLibrary") {
-			if field == "OpenGraphImageFromMediaLibrary.Description" {
-				mediaBox.Description = ctx.R.FormValue(fieldWithPrefix)
-				if err != nil {
-					return
-				}
-				settingVals["OpenGraphImageFromMediaLibrary"] = mediaBox
-			}
-			continue
-		}
-		if strings.HasPrefix(field, "Variables") {
-			key := strings.Replace(field, "Variables.", "", -1)
-			variables[key] = ctx.R.FormValue(fieldWithPrefix)
-		} else {
-			settingVals[field] = ctx.R.Form.Get(fieldWithPrefix)
-		}
-	}
-	s := setting.Setting
-	for k, v := range settingVals {
-		if k == "OpenGraphMetadataString" {
-			metadata := GetOpenGraphMetadata(v.(string))
-			err = reflectutils.Set(&s, "OpenGraphMetadata", metadata)
-			if err != nil {
-				return
-			}
-			continue
-		}
-		err = reflectutils.Set(&s, k, v)
-		if err != nil {
-			return
-		}
-	}
-
-	setting.Setting = s
-	setting.Variables = variables
-	setting.SetLocale(locale)
-	if err = db.Save(setting).Error; err != nil {
-		return
-	}
-	r.VarsScript = fmt.Sprintf(`vars.seoSnackbarShow = true;vars.%s = false;`, ctx.R.FormValue("loadingName"))
-	if b.afterSave != nil {
-		if err = b.afterSave(ctx.R.Context(), name, locale); err != nil {
-			return
-		}
-	}
-	return
 }

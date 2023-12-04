@@ -1,6 +1,8 @@
 package seo
 
 import (
+	"fmt"
+	"github.com/qor5/admin/l10n"
 	"github.com/theplant/testingutils"
 	"net/http"
 	"testing"
@@ -392,7 +394,7 @@ func TestSEO_RegisterPropFuncForOG(t *testing.T) {
 	}
 }
 
-func TestSEO_getFinalQorSEOSetting(t *testing.T) {
+func TestSEO_getLocaleFinalQorSEOSetting(t *testing.T) {
 	cases := []struct {
 		name      string
 		prepareDB func()
@@ -466,13 +468,117 @@ func TestSEO_getFinalQorSEOSetting(t *testing.T) {
 				c.prepareDB()
 			}
 			actual := &QorSEOSetting{}
-			seoSetting := c.seo.getFinalQorSEOSetting("", dbForTest)
+			seoSetting := c.seo.getLocaleFinalQorSEOSetting("", dbForTest)
 			actual.Name = seoSetting.Name
 			actual.Setting = seoSetting.Setting
 			actual.Variables = seoSetting.Variables
 			r := testingutils.PrettyJsonDiff(c.expected, actual)
 			if r != "" {
 				t.Errorf(r)
+			}
+		})
+	}
+}
+
+func TestSEO_getFinalQorSEOSetting(t *testing.T) {
+	cases := []struct {
+		name      string
+		prepareDB func()
+		seo       *SEO
+		expected  map[string]*QorSEOSetting
+	}{
+		{
+			name: "override_setting_var_from_parent",
+			prepareDB: func() {
+				resetDB()
+				seoSets := []*QorSEOSetting{
+					{
+						Name:    "nodeA",
+						Setting: Setting{Title: "{{Greeting}}"},
+						Variables: map[string]string{
+							"Greeting": "Hello",
+						},
+						Locale: l10n.Locale{LocaleCode: "en"},
+					},
+					{
+						Name:    "nodeA",
+						Setting: Setting{Title: "{{Greeting}}"},
+						Variables: map[string]string{
+							"Greeting": "你好",
+						},
+						Locale: l10n.Locale{LocaleCode: "zh"},
+					},
+					{
+						Name:    "nodeB",
+						Setting: Setting{Title: ""}, // The title filed will inherit from its parent
+						Variables: map[string]string{
+							"Greeting": "Hello, SEO", // override value from parent
+						},
+						Locale: l10n.Locale{LocaleCode: "en"},
+					},
+					{
+						Name:    "nodeB",
+						Setting: Setting{Title: "nodeB"}, // The title filed will override its parent
+						Variables: map[string]string{
+							"Greeting": "你好, SEO", // override value from parent
+						},
+						Locale: l10n.Locale{LocaleCode: "zh"},
+					},
+				}
+				if err := dbForTest.Create(seoSets).Error; err != nil {
+					panic(err)
+				}
+			},
+			seo: func() *SEO {
+				nodeA := &SEO{name: "nodeA"}
+				nodeB := &SEO{name: "nodeB"}
+				nodeB.SetParent(nodeA)
+				return nodeB
+			}(),
+			expected: map[string]*QorSEOSetting{
+				"en": {
+					Name:    "nodeB",
+					Setting: Setting{Title: "{{Greeting}}"},
+					Variables: map[string]string{
+						"Greeting": "Hello, SEO",
+					},
+					Locale: l10n.Locale{LocaleCode: "en"},
+				},
+				"zh": {
+					Name:    "nodeB",
+					Setting: Setting{Title: "nodeB"},
+					Variables: map[string]string{
+						"Greeting": "你好, SEO",
+					},
+					Locale: l10n.Locale{LocaleCode: "zh"},
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.prepareDB != nil {
+				c.prepareDB()
+			}
+			seoSets := c.seo.getFinalQorSEOSetting(dbForTest)
+			if len(seoSets) != len(c.expected) {
+				t.Errorf("The number of configuration does not match expetations")
+			}
+			for locale, actualSets := range seoSets {
+				if expectedSets, isExist := c.expected[locale]; !isExist {
+					t.Errorf(fmt.Sprintf("There is no SEO configuration available for %v", locale))
+				} else {
+					actual := &QorSEOSetting{}
+					actual.Setting = actualSets.Setting
+					actual.Variables = actualSets.Variables
+					actual.Name = actualSets.Name
+					actual.LocaleCode = actualSets.LocaleCode
+					r := testingutils.PrettyJsonDiff(expectedSets, actual)
+					if r != "" {
+						t.Errorf(r)
+					}
+				}
 			}
 		})
 	}

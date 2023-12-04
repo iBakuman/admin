@@ -1,6 +1,7 @@
 package seo
 
 import (
+	"errors"
 	"fmt"
 	"gorm.io/gorm"
 	"reflect"
@@ -269,12 +270,12 @@ func (seo *SEO) getAvailableVars() map[string]struct{} {
 	}
 }
 
-func (seo *SEO) getFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting {
+func (seo *SEO) getLocaleFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting {
 	if seo == nil || seo.name == "" {
 		return &QorSEOSetting{}
 	}
 	seoSetting := &QorSEOSetting{}
-	seoSettingOfParent := seo.parent.getFinalQorSEOSetting(locale, db)
+	seoSettingOfParent := seo.parent.getLocaleFinalQorSEOSetting(locale, db)
 	err := db.Where("name = ? and locale_code = ?", seo.name, locale).First(seoSetting).Error
 	if err != nil {
 		panic(err)
@@ -293,6 +294,42 @@ func (seo *SEO) getFinalQorSEOSetting(locale string, db *gorm.DB) *QorSEOSetting
 		}
 	}
 	return seoSetting
+}
+
+func (seo *SEO) getFinalQorSEOSetting(db *gorm.DB) map[string]*QorSEOSetting {
+	if seo == nil || seo.name == "" {
+		return nil
+	}
+
+	var seoSets []*QorSEOSetting
+	seoSetsOfParent := seo.parent.getFinalQorSEOSetting(db)
+	if err := db.Where("name = ?", seo.name).Find(&seoSets).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			panic(err)
+		}
+	}
+
+	r := make(map[string]*QorSEOSetting)
+	for _, seoSet := range seoSets {
+		locale := seoSet.Locale.LocaleCode
+		setsOfParent := seoSetsOfParent[locale]
+		if seoSetsOfParent == nil {
+			r[locale] = seoSet
+			continue
+		}
+		mergeSetting(&setsOfParent.Setting, &seoSet.Setting)
+		if seoSet.Variables == nil {
+			seoSet.Variables = make(Variables)
+		}
+		varsOfParent := setsOfParent.Variables
+		for varName, val := range varsOfParent {
+			if _, isExist := seoSet.Variables[varName]; !isExist {
+				seoSet.Variables[varName] = val
+			}
+		}
+		r[locale] = seoSet
+	}
+	return r
 }
 
 func (seo *SEO) getFinalContextVars() map[string]contextVariablesFunc {
@@ -340,6 +377,9 @@ func (seo *SEO) checkConflict(varName string, isContextVar bool) {
 }
 
 func mergeSetting(lowPSetting, highPSetting *Setting) {
+	if lowPSetting == nil {
+		return
+	}
 	if highPSetting.Title == "" {
 		highPSetting.Title = lowPSetting.Title
 	}

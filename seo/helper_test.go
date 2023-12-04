@@ -1,7 +1,10 @@
 package seo
 
 import (
+	"github.com/qor5/admin/l10n"
+	"os"
 	"strings"
+	"testing"
 
 	_ "github.com/lib/pq"
 	"gorm.io/driver/postgres"
@@ -11,8 +14,7 @@ import (
 var dbForTest *gorm.DB
 
 func init() {
-	// if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
-	if db, err := gorm.Open(postgres.Open("user=blog password=123 dbname=blog_dev sslmode=disable host=localhost port=7890"), &gorm.Config{}); err != nil {
+	if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
 		panic(err)
 	} else {
 		dbForTest = db
@@ -23,6 +25,7 @@ func init() {
 type Product struct {
 	Name string
 	SEO  Setting
+	l10n.Locale
 }
 
 // @snippet_end
@@ -42,4 +45,10 @@ func metaEqual(got, want string) bool {
 		}
 	}
 	return true
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	resetDB()
+	os.Exit(code)
 }

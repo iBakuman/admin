@@ -2,6 +2,7 @@ package seo
 
 import (
 	"context"
+	"github.com/qor5/admin/l10n"
 	"github.com/theplant/testingutils"
 	"net/http"
 	"net/url"
@@ -368,6 +369,321 @@ func TestBuilder_SortSEOs(t *testing.T) {
 			r := testingutils.PrettyJsonDiff(c.expected, c.data)
 			if r != "" {
 				t.Errorf(r)
+			}
+		})
+	}
+}
+
+func TestBuilder_BatchRender(t *testing.T) {
+	u, _ := url.Parse("http://dev.qor5.com/product/1")
+	defaultRequest := &http.Request{
+		Method: "GET",
+		URL:    u,
+	}
+
+	globalSeoSetting := QorSEOSetting{
+		Name: defaultGlobalSEOName,
+		Setting: Setting{
+			Title: "global | {{SiteName}}",
+		},
+		Variables: map[string]string{"SiteName": "Qor5 dev"},
+	}
+
+	cases := []struct {
+		name      string
+		prepareDB func()
+		builder   *Builder
+		objs      []interface{}
+		wants     []string
+	}{
+		{
+			name: "render_global_seo_with_setting_vars_and_default_context_vars",
+			prepareDB: func() {
+				if err := dbForTest.Save(&globalSeoSetting).Error; err != nil {
+					panic(err)
+				}
+				product := QorSEOSetting{
+					Name: "Product",
+					Setting: Setting{
+						Title: "product | {{SiteName}}",
+					},
+				}
+				if err := dbForTest.Save(&product).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest)
+				return builder
+			}(),
+			objs: []interface{}{"Product"},
+			wants: []string{`
+			<title>product | Qor5 dev</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+			},
+		},
+		{
+			name: "render_multiple_seos_with_global_setting_variables_and_context_variables",
+			prepareDB: func() {
+				if err := dbForTest.Save(&globalSeoSetting).Error; err != nil {
+					panic(err)
+				}
+				product := QorSEOSetting{
+					Name: "Product",
+					Setting: Setting{
+						Title: "product | {{SiteName}}",
+					},
+				}
+				if err := dbForTest.Save(&product).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest)
+				builder.RegisterSEO(Product{}).RegisterContextVariables(
+					&ContextVar{
+						Name: "ProductName",
+						Func: func(obj interface{}, _ *Setting, _ *http.Request) string {
+							return obj.(*Product).Name
+						},
+					},
+				)
+				return builder
+			}(),
+			objs: []interface{}{
+				&Product{
+					Name: "productA",
+					SEO: Setting{
+						Title:            "productA",
+						Description:      "{{SiteName}}",
+						EnabledCustomize: true,
+					},
+				},
+				&Product{
+					Name: "productB",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: true,
+					},
+				},
+			},
+			wants: []string{`
+			<title>productA</title>
+			<meta name='description' content='Qor5 dev'>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>productB</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+			},
+		},
+		{
+			name: "render_multiple_seos_with_three_levels_of_inheritance",
+			prepareDB: func() {
+				if err := dbForTest.Save(&globalSeoSetting).Error; err != nil {
+					panic(err)
+				}
+				settings := []*QorSEOSetting{
+					&globalSeoSetting,
+					{
+						Name: "Default PLP",
+						Setting: Setting{
+							Title: "plp | {{SiteName}}",
+						},
+						Variables: map[string]string{
+							// override SiteName var inherited from global seo
+							"SiteName": "Qor5-PLP",
+						},
+					},
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "product | {{SiteName}}",
+						},
+					},
+				}
+				if err := dbForTest.Save(&settings).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest)
+				builder.RegisterSEO("Default PLP").RegisterSettingVariables(
+					struct {
+						SiteName string
+					}{},
+				)
+				builder.RegisterSEO(Product{}).RegisterContextVariables(
+					&ContextVar{
+						Name: "ProductName",
+						Func: func(obj interface{}, _ *Setting, _ *http.Request) string {
+							return obj.(*Product).Name
+						},
+					},
+				).SetParent(builder.GetSEO("Default PLP"))
+				return builder
+			}(),
+			objs: []interface{}{
+				&Product{
+					Name: "productA",
+					SEO: Setting{
+						Title:            "productA",
+						Description:      "{{SiteName}}",
+						EnabledCustomize: true,
+					},
+				},
+				&Product{
+					Name: "productB",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: true,
+					},
+				},
+				&Product{
+					Name: "productC",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: false,
+					},
+				},
+			},
+			wants: []string{`
+			<title>productA</title>
+			<meta name='description' content='Qor5-PLP'>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>productB</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>product | Qor5-PLP</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+			},
+		},
+		{
+			name: "render_multiple_seos_with_different_locale",
+			prepareDB: func() {
+				if err := dbForTest.Save(&globalSeoSetting).Error; err != nil {
+					panic(err)
+				}
+				settings := []*QorSEOSetting{
+					{
+						Name: defaultGlobalSEOName,
+						Setting: Setting{
+							Title: "global | {{SiteName}}",
+						},
+						Variables: map[string]string{"SiteName": "Qor5 dev"},
+						Locale:    l10n.Locale{LocaleCode: "en"},
+					},
+					{
+						Name: defaultGlobalSEOName,
+						Setting: Setting{
+							Title: "全局 | {{SiteName}}",
+						},
+						Variables: map[string]string{"SiteName": "Qor5 开发"},
+						Locale:    l10n.Locale{LocaleCode: "zh"},
+					},
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "product | {{ProductName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: "en"},
+					},
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "产品 | {{ProductName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: "zh"},
+					},
+				}
+				if err := dbForTest.Save(&settings).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest, WithLocales("en", "zh"))
+				builder.RegisterSEO(Product{}).RegisterContextVariables(
+					&ContextVar{
+						Name: "ProductName",
+						Func: func(obj interface{}, _ *Setting, _ *http.Request) string {
+							return obj.(*Product).Name
+						},
+					},
+				)
+				return builder
+			}(),
+			objs: []interface{}{
+				&Product{
+					Name: "productA",
+					SEO: Setting{
+						Title:            "productA",
+						Description:      "{{SiteName}}",
+						EnabledCustomize: true,
+					},
+					Locale: l10n.Locale{LocaleCode: "en"},
+				},
+				&Product{
+					Name: "产品A",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: true,
+					},
+					Locale: l10n.Locale{LocaleCode: "zh"},
+				},
+				&Product{
+					Name: "productB",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: false,
+					},
+					Locale: l10n.Locale{LocaleCode: "en"},
+				},
+				&Product{
+					Name: "产品B",
+					SEO: Setting{
+						Title:            "{{ProductName}}",
+						EnabledCustomize: false,
+					},
+					Locale: l10n.Locale{LocaleCode: "zh"},
+				},
+			},
+			wants: []string{`
+			<title>productA</title>
+			<meta name='description' content='Qor5 dev'>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>产品A</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>product | productB</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+				`
+			<title>产品 | 产品B</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			resetDB()
+			c.prepareDB()
+			comps := c.builder.BatchRender(c.objs, defaultRequest)
+			for i, comp := range comps {
+				got, _ := comp.MarshalHTML(context.TODO())
+				if !metaEqual(string(got), c.wants[i]) {
+					t.Errorf("Render = %v\nExpected = %v", string(got), c.wants[i])
+				}
 			}
 		})
 	}

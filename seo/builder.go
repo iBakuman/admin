@@ -24,9 +24,8 @@ var (
 
 type (
 	contextVariablesFunc func(interface{}, *Setting, *http.Request) string
+	Option               func(*Builder)
 )
-
-type Option func(*Builder)
 
 func WithInherit(inherited bool) Option {
 	return func(b *Builder) {
@@ -53,11 +52,11 @@ func WithLocales(locales ...string) Option {
 }
 
 func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
-	seoRoot := &SEO{name: defaultGlobalSEOName}
-	seoRoot.RegisterSettingVariables(struct {
+	globalSEO := &SEO{name: defaultGlobalSEOName}
+	globalSEO.RegisterSettingVariables(struct {
 		SiteName string
 	}{})
-	seoRoot.RegisterPropFuncForOG(&PropFunc{
+	globalSEO.RegisterPropFuncForOG(&PropFunc{
 		Name: "og:url",
 		Func: func(_ interface{}, _ *Setting, req *http.Request) string {
 			return req.URL.String()
@@ -65,7 +64,7 @@ func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
 	})
 	b := &Builder{
 		registeredSEO: make(map[string]*SEO),
-		seoRoot:       seoRoot,
+		seoRoot:       globalSEO,
 		inherited:     true,
 		db:            db,
 	}
@@ -87,12 +86,11 @@ type Builder struct {
 	// key == val.Name
 	registeredSEO map[string]*SEO
 
-	locales      []string
-	db           *gorm.DB
-	seoRoot      *SEO
-	inherited    bool
-	dbContextKey interface{}                                                        // get db from context
-	afterSave    func(ctx context.Context, settingName string, locale string) error // hook called after saving
+	locales   []string
+	db        *gorm.DB
+	seoRoot   *SEO
+	inherited bool
+	afterSave func(ctx context.Context, settingName string, locale string) error // hook called after saving
 }
 
 // @snippet_end
@@ -171,7 +169,7 @@ func (b *Builder) RegisterSEO(obj interface{}) *SEO {
 // be the parent of the SEO
 func (b *Builder) RemoveSEO(obj interface{}) *Builder {
 	seoToBeRemoved := b.GetSEO(obj)
-	if seoToBeRemoved == nil {
+	if seoToBeRemoved == nil || seoToBeRemoved == b.seoRoot {
 		return b
 	}
 	seoToBeRemoved.RemoveSelf()
@@ -207,14 +205,14 @@ func (b *Builder) GetSEOPriority(name string) int {
 }
 
 func (b *Builder) SortSEOs(SEOs []*QorSEOSetting) {
-	m := make(map[string]int)
+	orders := make(map[string]int)
 	order := 0
 	var dfs func(root *SEO)
 	dfs = func(seo *SEO) {
 		if seo == nil {
 			return
 		}
-		m[seo.name] = order
+		orders[seo.name] = order
 		order++
 		for _, child := range seo.children {
 			dfs(child)
@@ -222,7 +220,7 @@ func (b *Builder) SortSEOs(SEOs []*QorSEOSetting) {
 	}
 	dfs(b.seoRoot)
 	sort.Slice(SEOs, func(i, j int) bool {
-		return m[SEOs[i].Name] < m[SEOs[j].Name]
+		return orders[SEOs[i].Name] < orders[SEOs[j].Name]
 	})
 }
 
@@ -242,14 +240,44 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	if v, ok := obj.(l10n.L10nInterface); ok {
 		locale = v.GetLocale()
 	}
+	localeFinalSeoSetting := seo.getLocaleFinalQorSEOSetting(locale, b.db)
+	return b.render(obj, localeFinalSeoSetting, seo, req)
+}
 
-	db := b.db
-	finalSeoSetting := seo.getFinalQorSEOSetting(locale, db)
+// BatchRender rendering multiple SEOs at once.
+// It is the responsibility of the caller to ensure that every element in objs
+// is of the same type, as it is performance-intensive to check whether each element
+// in `objs` if of the same type through reflection.
+func (b *Builder) BatchRender(objs []interface{}, req *http.Request) []h.HTMLComponent {
+	if len(objs) == 0 {
+		return nil
+	}
+	seo := b.GetSEO(objs[0])
+	if seo == nil {
+		return nil
+	}
+	finalSeoSettings := seo.getFinalQorSEOSetting(b.db)
+	comps := make([]h.HTMLComponent, 0, len(objs))
+	for _, obj := range objs {
+		var locale string
+		if v, ok := obj.(l10n.L10nInterface); ok {
+			locale = v.GetLocale()
+		}
+		defaultSetting := finalSeoSettings[locale]
+		if defaultSetting == nil {
+			panic(fmt.Sprintf("There are no available seo configuration for %v locale", locale))
+		}
+		comp := b.render(obj, finalSeoSettings[locale], seo, req)
+		comps = append(comps, comp)
+	}
+	return comps
+}
 
+func (b *Builder) render(obj interface{}, defaultSEOSetting *QorSEOSetting, seo *SEO, req *http.Request) h.HTMLComponent {
 	// get setting
 	var setting Setting
 	{
-		setting = finalSeoSetting.Setting
+		setting = defaultSEOSetting.Setting
 		if _, ok := obj.(string); !ok {
 			if value := reflect.Indirect(reflect.ValueOf(obj)); value.IsValid() && value.Kind() == reflect.Struct {
 				for i := 0; i < value.NumField(); i++ {
@@ -257,7 +285,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 						if tSetting := value.Field(i).Interface().(Setting); tSetting.EnabledCustomize {
 							// if the obj embeds Setting, then overrides `finalSeoSetting.Setting` with `tSetting`
 							if b.inherited {
-								mergeSetting(&finalSeoSetting.Setting, &tSetting)
+								mergeSetting(&defaultSEOSetting.Setting, &tSetting)
 							}
 							setting = tSetting
 						}
@@ -270,7 +298,7 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 
 	// replace placeholders
 	{
-		variables := finalSeoSetting.Variables
+		variables := defaultSEOSetting.Variables
 		finalContextVars := seo.getFinalContextVars()
 		// execute function for context var
 		for varName, varFunc := range finalContextVars {
@@ -290,18 +318,12 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	}
 
 	ogProps := map[string]string{}
-	{
-		finalPropFuncForOG := seo.getFinalPropFuncForOG()
-		for propName, propFunc := range finalPropFuncForOG {
-			ogProps[propName] = propFunc(obj, &setting, req)
-		}
+	finalPropFuncForOG := seo.getFinalPropFuncForOG()
+	for propName, propFunc := range finalPropFuncForOG {
+		ogProps[propName] = propFunc(obj, &setting, req)
 	}
 
 	return setting.HTMLComponent(ogProps)
-}
-
-func (b *Builder) BatchRender(models []interface{}) ([]h.HTMLComponent, error) {
-	return nil, nil
 }
 
 var regex = regexp.MustCompile("{{([a-zA-Z0-9]*)}}")

@@ -1,1 +1,1 @@
-export DBURL="user=blog password=123 dbname=blog_dev sslmode=disable host=localhost port=7890"
+export DBURL="user=seo password=123 dbname=seo_dev sslmode=disable host=localhost port=8822"

@@ -24,7 +24,8 @@ func ConfigureSeo(pb *presets.Builder, db *gorm.DB, locales ...string) *presets.
 					return ""
 				}}).
 		RegisterSettingVariables(struct {
-			Test string
+			Test     string
+			SiteName string
 		}{})
 	seoBuilder.RegisterMultipleSEO("Product", "Announcement")
 	return seoBuilder.Configure(pb)
