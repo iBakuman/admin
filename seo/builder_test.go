@@ -2,13 +2,13 @@ package seo
 
 import (
 	"context"
-	"github.com/qor5/admin/l10n"
-	"github.com/theplant/testingutils"
 	"net/http"
 	"net/url"
 	"testing"
 
 	_ "github.com/lib/pq"
+	"github.com/qor5/admin/l10n"
+	"github.com/theplant/testingutils"
 )
 
 func TestBuilder_Render(t *testing.T) {

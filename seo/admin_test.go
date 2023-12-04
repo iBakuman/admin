@@ -3,16 +3,16 @@ package seo
 import (
 	"bytes"
 	"errors"
-	"github.com/qor5/admin/l10n"
-	"github.com/qor5/admin/presets/gorm2op"
-	"github.com/theplant/testingutils"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/qor5/admin/l10n"
 	l10n_view "github.com/qor5/admin/l10n/views"
 	"github.com/qor5/admin/presets"
+	"github.com/qor5/admin/presets/gorm2op"
+	"github.com/theplant/testingutils"
 	"gorm.io/gorm"
 )
 

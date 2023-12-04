@@ -3,7 +3,6 @@ package seo
 import (
 	"context"
 	"fmt"
-	"gorm.io/gorm/clause"
 	"net/http"
 	"net/url"
 	"path"
@@ -13,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/qor5/admin/l10n"
-
 	h "github.com/theplant/htmlgo"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (

@@ -2,10 +2,11 @@ package seo
 
 import (
 	"fmt"
-	"github.com/qor5/admin/l10n"
-	"github.com/theplant/testingutils"
 	"net/http"
 	"testing"
+
+	"github.com/qor5/admin/l10n"
+	"github.com/theplant/testingutils"
 )
 
 func TestSEO_AddChildren(t *testing.T) {

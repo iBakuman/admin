@@ -1,12 +1,12 @@
 package seo
 
 import (
-	"github.com/qor5/admin/l10n"
 	"os"
 	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
+	"github.com/qor5/admin/l10n"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
