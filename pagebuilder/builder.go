@@ -645,15 +645,13 @@ function(e){
 		pm.Editing().SidePanelFunc(nil).ActionsFunc(nil)
 	}
 	if seoBuilder != nil {
-		seoBuilder.RegisterSEO(&Page{}).RegisterContextVariables(
-			&seo.ContextVar{
-				Name: "Title",
-				Func: func(object interface{}, _ *seo.Setting, _ *http.Request) string {
-					if p, ok := object.(*Page); ok {
-						return p.Title
-					}
-					return ""
-				},
+		seoBuilder.RegisterSEO(&Page{}).RegisterContextVariable(
+			"Title",
+			func(object interface{}, _ *seo.Setting, _ *http.Request) string {
+				if p, ok := object.(*Page); ok {
+					return p.Title
+				}
+				return ""
 			},
 		)
 	}
