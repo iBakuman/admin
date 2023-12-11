@@ -30,7 +30,7 @@ type SEO struct {
 	modelTyp reflect.Type
 
 	// [The Optional Metadata for Open Graph Protocol](https://ogp.me/#optional)
-	propFuncForOG map[string]contextVariablesFunc
+	metaProps map[string]contextVariablesFunc
 
 	// Dynamically retrieve the content that replaces the placeholders with its value
 	contextVars map[string]contextVariablesFunc
@@ -39,9 +39,9 @@ type SEO struct {
 	// For example, if the variable field in the database contains a:"b", then {{a}} will be replaced with b.
 	settingVars map[string]struct{}
 
-	finalContextVarsCache    map[string]contextVariablesFunc
-	finalMetaPropertiesCache map[string]contextVariablesFunc
-	finalAvailableVarsCache  map[string]struct{}
+	finalContextVarsCache   map[string]contextVariablesFunc
+	finalMetaPropsCache     map[string]contextVariablesFunc
+	finalAvailableVarsCache map[string]struct{}
 }
 
 // @snippet_end
@@ -193,8 +193,8 @@ func (seo *SEO) RegisterMetaProperty(propName string, propFunc contextVariablesF
 	if seo == nil {
 		return nil
 	}
-	if seo.propFuncForOG == nil {
-		seo.propFuncForOG = make(map[string]contextVariablesFunc)
+	if seo.metaProps == nil {
+		seo.metaProps = make(map[string]contextVariablesFunc)
 	}
 	prop := strings.TrimSpace(propName)
 	if prop == "" || propFunc == nil {
@@ -203,10 +203,10 @@ func (seo *SEO) RegisterMetaProperty(propName string, propFunc contextVariablesF
 	if !strings.Contains(prop, ":") {
 		panic(fmt.Sprintf("%v is not a valid OpenGraph property name", prop))
 	}
-	if _, isExist := seo.propFuncForOG[prop]; isExist {
+	if _, isExist := seo.metaProps[prop]; isExist {
 		panic(fmt.Sprintf("property %v has already been registered", prop))
 	}
-	seo.propFuncForOG[prop] = propFunc
+	seo.metaProps[prop] = propFunc
 	return seo
 }
 
@@ -214,20 +214,20 @@ func (seo *SEO) getFinalMetaProperties() map[string]contextVariablesFunc {
 	if seo == nil {
 		return nil
 	}
-	if seo.finalMetaPropertiesCache != nil {
-		return seo.finalMetaPropertiesCache
+	if seo.finalMetaPropsCache != nil {
+		return seo.finalMetaPropsCache
 	} else {
-		seo.finalMetaPropertiesCache = make(map[string]contextVariablesFunc)
-		for propName, propFunc := range seo.propFuncForOG {
-			seo.finalMetaPropertiesCache[propName] = propFunc
+		seo.finalMetaPropsCache = make(map[string]contextVariablesFunc)
+		for propName, propFunc := range seo.metaProps {
+			seo.finalMetaPropsCache[propName] = propFunc
 		}
 		cacheOfParent := seo.parent.getFinalMetaProperties()
 		for propName, propFunc := range cacheOfParent {
-			if _, isExist := seo.finalMetaPropertiesCache[propName]; !isExist {
-				seo.finalMetaPropertiesCache[propName] = propFunc
+			if _, isExist := seo.finalMetaPropsCache[propName]; !isExist {
+				seo.finalMetaPropsCache[propName] = propFunc
 			}
 		}
-		return seo.finalMetaPropertiesCache
+		return seo.finalMetaPropsCache
 	}
 }
 
