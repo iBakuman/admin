@@ -29,7 +29,6 @@ type SEO struct {
 
 	modelTyp reflect.Type
 
-	// [The Optional Metadata for Open Graph Protocol](https://ogp.me/#optional)
 	metaProps map[string]contextVariablesFunc
 
 	// Dynamically retrieve the content that replaces the placeholders with its value
