@@ -74,7 +74,7 @@ type Builder struct {
 	pageLayoutFunc    PageLayoutFunc
 	preview           http.Handler
 	images            http.Handler
-	seoCollection     *seo.Builder
+	seoBuilder        *seo.Builder
 	imagesPrefix      string
 	defaultDevice     string
 	publishBtnColor   string
@@ -204,13 +204,13 @@ func (b *Builder) TemplateEnabled(v bool) (r *Builder) {
 	return b
 }
 
-func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder, activityB *activity.ActivityBuilder, publisher *publish.Builder, seoCollection *seo.Builder) (pm *presets.ModelBuilder) {
+func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builder, activityB *activity.ActivityBuilder, publisher *publish.Builder, seoBuilder *seo.Builder) (pm *presets.ModelBuilder) {
 	pb.I18n().
 		RegisterForModule(language.English, I18nPageBuilderKey, Messages_en_US).
 		RegisterForModule(language.SimplifiedChinese, I18nPageBuilderKey, Messages_zh_CN).
 		RegisterForModule(language.Japanese, I18nPageBuilderKey, Messages_ja_JP)
 	pm = pb.Model(&Page{})
-	b.seoCollection = seoCollection
+	b.seoBuilder = seoBuilder
 
 	templateM := presets.NewModelBuilder(pb, &Template{})
 	if b.templateEnabled {
@@ -416,13 +416,13 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builde
 (function(){
 	let scrollLeft = 0;
 	let scrollTop = 0;
-	
+
 	function pause(duration) {
 		return new Promise(res => setTimeout(res, duration));
 	}
 	function backoff(retries, fn, delay = 100) {
 		fn().catch(err => retries > 1
-			? pause(delay).then(() => backoff(retries - 1, fn, delay * 2)) 
+			? pause(delay).then(() => backoff(retries - 1, fn, delay * 2))
 			: Promise.reject(err));
 	}
 
@@ -438,7 +438,7 @@ func (b *Builder) Configure(pb *presets.Builder, db *gorm.DB, l10nB *l10n.Builde
 		scrollLeft = window.scrollX;
 		scrollTop = window.scrollY;
 	});
-	
+
 	window.addEventListener('fetchEnd', (event) => {
 		backoff(5, restoreScroll, 100);
 	});
@@ -491,7 +491,7 @@ function(e){
 	pm.RegisterEventFunc(schedulePublishEvent, schedulePublish(db, pm))
 	pm.RegisterEventFunc(createNoteDialogEvent, createNoteDialog(db, pm))
 	pm.RegisterEventFunc(createNoteEvent, createNote(db, pm))
-	pm.RegisterEventFunc(editSEODialogEvent, editSEODialog(db, pm, seoCollection))
+	pm.RegisterEventFunc(editSEODialogEvent, editSEODialog(db, pm, seoBuilder))
 	pm.RegisterEventFunc(updateSEOEvent, updateSEO(db, pm))
 	eb := pm.Editing("TemplateSelection", "Title", "CategoryID", "Slug")
 	eb.ValidateFunc(func(obj interface{}, ctx *web.EventContext) (err web.ValidationErrors) {
@@ -644,19 +644,16 @@ function(e){
 		pv.Configure(pb, db, activityB, publisher, pm)
 		pm.Editing().SidePanelFunc(nil).ActionsFunc(nil)
 	}
-	if seoCollection != nil {
-		seoCollection.RegisterSEO(&Page{}).
-			RegisterContextVariables(
-				&seo.ContextVar{
-					Name: "Title",
-					Func: func(object interface{}, _ *seo.Setting, _ *http.Request) string {
-						if p, ok := object.(Page); ok {
-							return p.Title
-						}
-						return ""
-					},
-				},
-			)
+	if seoBuilder != nil {
+		seoBuilder.RegisterSEO(&Page{}).RegisterContextVariable(
+			"Title",
+			func(object interface{}, _ *seo.Setting, _ *http.Request) string {
+				if p, ok := object.(*Page); ok {
+					return p.Title
+				}
+				return ""
+			},
+		)
 	}
 	note.Configure(db, pb, pm)
 	eb.CleanTabsPanels()
@@ -1301,7 +1298,7 @@ func createNote(db *gorm.DB, mb *presets.ModelBuilder) web.EventFunc {
 	}
 }
 
-func editSEODialog(db *gorm.DB, mb *presets.ModelBuilder, seoCollection *seo.Builder) web.EventFunc {
+func editSEODialog(db *gorm.DB, mb *presets.ModelBuilder, seoBuilder *seo.Builder) web.EventFunc {
 	return func(ctx *web.EventContext) (r web.EventResponse, err error) {
 		paramID := ctx.R.FormValue(presets.ParamID)
 		obj := mb.NewModel()
@@ -1324,7 +1321,7 @@ func editSEODialog(db *gorm.DB, mb *presets.ModelBuilder, seoCollection *seo.Bui
 				URL(mb.Info().ListingHref()).
 				Go())
 		ctx.R.Form.Set("hideActionsIconForSEOForm", "true")
-		seoForm := seoCollection.EditingComponentFunc(obj, nil, ctx)
+		seoForm := seoBuilder.EditingComponentFunc(obj, nil, ctx)
 
 		r.UpdatePortals = append(r.UpdatePortals, &web.PortalUpdate{
 			Name: dialogPortalName,
@@ -1881,7 +1878,7 @@ func (b *ContainerBuilder) configureRelatedOnlinePagesTab() {
 		pageTable := (&Page{}).TableName()
 		containerTable := (&Container{}).TableName()
 		err = b.builder.db.Model(&Page{}).
-			Joins(fmt.Sprintf(`inner join %s on 
+			Joins(fmt.Sprintf(`inner join %s on
         %s.id = %s.page_id
         and %s.version = %s.page_version
         and %s.locale_code = %s.locale_code`,
