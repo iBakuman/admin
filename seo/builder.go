@@ -301,13 +301,13 @@ func (b *Builder) render(obj interface{}, defaultSEOSetting *QorSEOSetting, seo 
 		}
 	}
 
-	ogProps := map[string]string{}
-	finalPropFuncForOG := seo.getFinalMetaProperties()
-	for propName, propFunc := range finalPropFuncForOG {
-		ogProps[propName] = propFunc(obj, &setting, req)
+	metaProperties := map[string]string{}
+	finalMetaProperties := seo.getFinalMetaProperties()
+	for propName, propFunc := range finalMetaProperties {
+		metaProperties[propName] = propFunc(obj, &setting, req)
 	}
 
-	return setting.HTMLComponent(ogProps)
+	return setting.HTMLComponent(metaProperties)
 }
 
 var regex = regexp.MustCompile("{{([a-zA-Z0-9]*)}}")
