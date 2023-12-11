@@ -139,7 +139,6 @@ builder.RegisterSEO(&Test{}) // will panic
   builder := NewBuilder(dbForTest)
   builder.RegisterSEO(&Product{}).
     RegisterSettingVariables("Type", "Place of Origin")
-
   ```
 
 - Register context variables
