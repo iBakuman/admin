@@ -302,7 +302,7 @@ func (b *Builder) render(obj interface{}, defaultSEOSetting *QorSEOSetting, seo 
 	}
 
 	metaProperties := map[string]string{}
-	finalMetaProperties := seo.getFinalMetaProperties()
+	finalMetaProperties := seo.getFinalMetaProps()
 	for propName, propFunc := range finalMetaProperties {
 		metaProperties[propName] = propFunc(obj, &setting, req)
 	}

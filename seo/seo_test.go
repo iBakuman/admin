@@ -637,11 +637,11 @@ func TestSEO_getFinalPropFuncForOG(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			seo := c.getSEO()
-			finalOgTag := seo.getFinalMetaProperties()
-			if len(finalOgTag) != len(c.expected) {
+			finalMetaProps := seo.getFinalMetaProps()
+			if len(finalMetaProps) != len(c.expected) {
 				t.Errorf("The number of og property is not equal to expectation")
 			}
-			for prop, propFunc := range finalOgTag {
+			for prop, propFunc := range finalMetaProps {
 				actualVal := propFunc(nil, nil, nil)
 				if c.expected[prop] != actualVal {
 					t.Errorf("The %v property's actual value: %v, but %v is expected",

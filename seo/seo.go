@@ -209,7 +209,7 @@ func (seo *SEO) RegisterMetaProperty(propName string, propFunc contextVariablesF
 	return seo
 }
 
-func (seo *SEO) getFinalMetaProperties() map[string]contextVariablesFunc {
+func (seo *SEO) getFinalMetaProps() map[string]contextVariablesFunc {
 	if seo == nil {
 		return nil
 	}
@@ -220,7 +220,7 @@ func (seo *SEO) getFinalMetaProperties() map[string]contextVariablesFunc {
 		for propName, propFunc := range seo.metaProps {
 			seo.finalMetaPropsCache[propName] = propFunc
 		}
-		cacheOfParent := seo.parent.getFinalMetaProperties()
+		cacheOfParent := seo.parent.getFinalMetaProps()
 		for propName, propFunc := range cacheOfParent {
 			if _, isExist := seo.finalMetaPropsCache[propName]; !isExist {
 				seo.finalMetaPropsCache[propName] = propFunc
