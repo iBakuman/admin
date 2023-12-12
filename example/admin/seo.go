@@ -21,7 +21,7 @@ func ConfigureSeo(pb *presets.Builder, db *gorm.DB, locales ...string) {
 			}
 			return ""
 		},
-	).RegisterSettingVariables("Test")
+	).RegisterSettingVariables("Test").SetDisplayedName("My Post")
 	seoBuilder.RegisterMultipleSEO("Product", "Announcement")
 	seoBuilder.Configure(pb)
 }
