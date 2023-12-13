@@ -35,12 +35,11 @@ func WithInherit(inherited bool) Option {
 
 func WithGlobalSEOName(name string) Option {
 	return func(b *Builder) {
-		name = b.GetSEOName(name)
+		name = strings.TrimSpace(name)
 		if name == "" {
 			panic("The global seo name must be not empty")
 		}
 		b.seoRoot.name = name
-		b.seoRoot.displayedName = name
 		delete(b.registeredSEO, defaultGlobalSEOName)
 		b.registeredSEO[name] = b.seoRoot
 	}
@@ -53,10 +52,10 @@ func WithLocales(locales ...string) Option {
 }
 
 func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
-	globalSEO := &SEO{name: defaultGlobalSEOName, displayedName: defaultGlobalSEOName}
+	globalSEO := &SEO{name: defaultGlobalSEOName}
 	globalSEO.RegisterSettingVariables("SiteName")
 	b := &Builder{
-		registeredSEO: make(map[string]*SEO),
+		registeredSEO: make(map[interface{}]*SEO),
 		seoRoot:       globalSEO,
 		inherited:     true,
 		db:            db,
@@ -81,8 +80,7 @@ func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
 // @snippet_begin(SeoBuilderDefinition)
 type Builder struct {
 	// key == val.Name
-	registeredSEO  map[string]*SEO
-	modelToSEOName map[reflect.Type]string
+	registeredSEO map[interface{}]*SEO
 
 	locales   []string
 	db        *gorm.DB
@@ -93,54 +91,50 @@ type Builder struct {
 
 // @snippet_end
 
-// RegisterMultipleSEO registers multiple SEOs.
-// It calls RegisterSEO to accomplish its functionality.
-func (b *Builder) RegisterMultipleSEO(objs ...interface{}) []*SEO {
-	SEOs := make([]*SEO, 0, len(objs))
-	for _, obj := range objs {
-		SEOs = append(SEOs, b.RegisterSEO(obj))
-	}
-	return SEOs
-}
-
 // RegisterSEO registers a SEO through name or model.
-// If an SEO already exists, it will panic.
-// The obj parameter can be of type string or a struct type that embed Setting struct.
-// The default parent of the registered SEO is seoRoot. If you need to set
+// If the SEO to be registered already exists, it will panic.
+// The optional second parameter names `model` is an instance of a type
+// that has a field of type `Setting`, if the type of model does not have
+// such field or len(model) > 1, the program will panic.
+// The default parent of the registered SEO is global seo. If you need to set
 // its parent, Please call the SetParent method of SEO after invoking RegisterSEO method.
-// For Example: b.RegisterSEO(&Region{}).SetParent(parentSEO)
+// For Example: b.RegisterSEO("Region", &Region{}).SetParent(parentSEO)
 func (b *Builder) RegisterSEO(name string, model ...interface{}) *SEO {
-	seoName := b.GetSEOName(name)
+	seoName := strings.TrimSpace(name)
 	if seoName == "" {
 		panic("the seo name must not be empty")
 	}
 	if _, isExist := b.registeredSEO[seoName]; isExist {
 		panic(fmt.Sprintf("The %v SEO already exists!", seoName))
 	}
-	seo := &SEO{name: seoName, displayedName: seoName}
+
+	seo := &SEO{name: seoName}
+	// default parent is seoRoot
+	seo.SetParent(b.seoRoot)
+	b.registeredSEO[seoName] = seo
 	if len(model) > 0 {
+		if len(model) > 1 {
+			panic("too many arguments")
+		}
 		modelType := reflect.Indirect(reflect.ValueOf(model[0])).Type()
 		isSettingNested := false
-		for i := 0; i < modelType.NumField(); i++ {
-			if modelType.Field(i).Type == reflect.TypeOf(Setting{}) {
-				isSettingNested = true
-				// seo.modelTyp = value.Type()
-				break
+		if modelType.Kind() == reflect.Struct {
+			for i := 0; i < modelType.NumField(); i++ {
+				if modelType.Field(i).Type == reflect.TypeOf(Setting{}) {
+					isSettingNested = true
+					break
+				}
 			}
 		}
 		if !isSettingNested {
 			panic("model must be of struct type that embed Setting struct")
 		}
-		if _, isExist := b.modelToSEOName[modelType]; isExist {
-			panic(fmt.Sprintf("The seo for %v model has been registered", modelType.Name()))
+		if _, isExist := b.registeredSEO[modelType]; isExist {
+			panic(fmt.Sprintf("the seo for %v model has been registered", modelType.Name()))
 		}
+		b.registeredSEO[modelType] = seo
 	}
-	// default parent is seoRoot
-	seo.SetParent(b.seoRoot)
-	if _, ok := obj.(string); !ok { // for model SEO
-		seo.modelTyp = reflect.Indirect(reflect.ValueOf(obj)).Type()
-	}
-	b.registeredSEO[seoName] = seo
+
 	if err := insertIfNotExists(b.db, seoName, b.locales); err != nil {
 		panic(err)
 	}
@@ -166,8 +160,13 @@ func (b *Builder) RemoveSEO(obj interface{}) *Builder {
 // the SEO name is obtained from the type name that is retrieved through reflection.
 // If no SEO with the specified name is found, it returns nil.
 func (b *Builder) GetSEO(obj interface{}) *SEO {
-	name := b.GetSEOName(obj)
-	return b.registeredSEO[name]
+	switch res := obj.(type) {
+	case string:
+		return b.registeredSEO[res]
+	default:
+		modelType := reflect.Indirect(reflect.ValueOf(obj)).Type()
+		return b.registeredSEO[modelType]
+	}
 }
 
 func (b *Builder) GetGlobalSEO() *SEO {
@@ -371,14 +370,4 @@ func insertIfNotExists(db *gorm.DB, seoName string, locales []string) error {
 		return err
 	}
 	return nil
-}
-
-// GetSEOName return the SEO name.
-func (b *Builder) GetSEOName(obj interface{}) string {
-	switch res := obj.(type) {
-	case string:
-		return strings.TrimSpace(res)
-	default:
-		return reflect.Indirect(reflect.ValueOf(obj)).Type().Name()
-	}
 }

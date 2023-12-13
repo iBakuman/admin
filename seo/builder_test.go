@@ -120,7 +120,7 @@ func TestBuilder_Render(t *testing.T) {
 			},
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
-				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
+				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -149,7 +149,7 @@ func TestBuilder_Render(t *testing.T) {
 			},
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
-				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
+				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -178,7 +178,7 @@ func TestBuilder_Render(t *testing.T) {
 			},
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
-				builder.RegisterSEO(&Product{}).SetParent(builder.GetGlobalSEO())
+				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
 			obj: Product{
@@ -211,7 +211,7 @@ func TestBuilder_Render(t *testing.T) {
 			},
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest, WithInherit(false))
-				builder.RegisterSEO(&Product{})
+				builder.RegisterSEO("Product", &Product{})
 				return builder
 			}(),
 			obj: Product{
@@ -255,7 +255,8 @@ func TestBuilder_GetSEOPriority(t *testing.T) {
 					builder.RegisterSEO("City"),
 					builder.RegisterSEO("Prefecture"),
 				).AppendChildren(
-					builder.RegisterMultipleSEO("Post", "Product")...,
+					builder.RegisterSEO("Post"),
+					builder.RegisterSEO("Product"),
 				)
 				return builder
 			}(),
@@ -300,7 +301,8 @@ func TestBuilder_RemoveSEO(t *testing.T) {
 		}(),
 		expected: func() *Builder {
 			builder := NewBuilder(dbForTest)
-			builder.RegisterMultipleSEO("Son1", "Son2")
+			builder.RegisterSEO("Son1")
+			builder.RegisterSEO("Son2")
 			return builder
 		}(),
 	}}
@@ -348,7 +350,8 @@ func TestBuilder_SortSEOs(t *testing.T) {
 					builder.RegisterSEO("City"),
 					builder.RegisterSEO("Prefecture"),
 				)
-				builder.RegisterMultipleSEO("Post", "Product")
+				builder.RegisterSEO("Post")
+				builder.RegisterSEO("Product")
 				return builder
 			}(),
 			data: []*QorSEOSetting{
@@ -461,7 +464,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 					func(_ interface{}, _ *Setting, req *http.Request) string {
 						return req.URL.String()
 					})
-				builder.RegisterSEO(Product{}).RegisterContextVariable(
+				builder.RegisterSEO("Product", &Product{}).RegisterContextVariable(
 					"ProductName",
 					func(obj interface{}, _ *Setting, _ *http.Request) string {
 						return obj.(*Product).Name
@@ -536,7 +539,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 						return req.URL.String()
 					})
 				builder.RegisterSEO("Default PLP").RegisterSettingVariables("SiteName")
-				builder.RegisterSEO(Product{}).RegisterContextVariable(
+				builder.RegisterSEO("Product", Product{}).RegisterContextVariable(
 					"ProductName",
 					func(obj interface{}, _ *Setting, _ *http.Request) string {
 						return obj.(*Product).Name
@@ -632,7 +635,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 					func(_ interface{}, _ *Setting, req *http.Request) string {
 						return req.URL.String()
 					})
-				builder.RegisterSEO(Product{}).RegisterContextVariable(
+				builder.RegisterSEO("Product", Product{}).RegisterContextVariable(
 					"ProductName",
 					func(obj interface{}, _ *Setting, _ *http.Request) string {
 						return obj.(*Product).Name

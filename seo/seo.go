@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"gorm.io/gorm"
-	"reflect"
 	"strings"
 )
 
@@ -26,11 +25,6 @@ type SEO struct {
 	// Registering Multiple SEOs with the same name in Builder will cause
 	// the program to panic.
 	name string
-
-	// displayedName is the name that appears on the SEO management page.
-	displayedName string
-
-	modelTyp reflect.Type
 
 	metaProps map[string]ContextVarFunc
 
@@ -125,15 +119,6 @@ func (seo *SEO) SetParent(newParent *SEO) *SEO {
 	for varName := range seo.contextVars {
 		seo.checkConflict(varName, true)
 	}
-	return seo
-}
-
-func (seo *SEO) SetDisplayedName(name string) *SEO {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		panic("the displayed name must be not empty")
-	}
-	seo.displayedName = name
 	return seo
 }
 
