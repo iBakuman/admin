@@ -1,4 +1,4 @@
-package test_same_type_name
+package seo_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 
 	"github.com/qor5/admin/l10n"
 	"github.com/qor5/admin/seo"
-	adminUser "github.com/qor5/admin/seo/test_same_type_name/admin"
-	customerUser "github.com/qor5/admin/seo/test_same_type_name/customer"
+	adminUser "github.com/qor5/admin/seo/testdata/admin"
+	customerUser "github.com/qor5/admin/seo/testdata/customer"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -19,16 +19,11 @@ import (
 var dbForTest *gorm.DB
 
 func init() {
-	// if db, err := gorm.Open(postgres.Open("user=seo password=123 dbname=seo_dev sslmode=disable host=localhost port=8822"), &gorm.Config{}); err != nil {
 	if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
 		panic(err)
 	} else {
 		dbForTest = db
 	}
-}
-
-func resetDB() {
-	dbForTest.Exec("truncate qor_seo_settings;")
 }
 
 func metaEqual(got, want string) bool {
@@ -121,7 +116,7 @@ func TestRenderSameType(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			resetDB()
+			dbForTest.Exec("truncate qor_seo_settings;")
 			c.prepareDB()
 			if got, _ := c.builder.Render(c.obj, defaultRequest).MarshalHTML(context.TODO()); !metaEqual(string(got), c.want) {
 				t.Errorf("Render = %v\nExpected = %v", string(got), c.want)
