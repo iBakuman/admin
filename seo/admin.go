@@ -83,12 +83,11 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 			seoSetting := obj.(*QorSEOSetting)
 			icon := "folder"
 			priority := b.GetSEOPriority(seoSetting.Name)
-			seo := b.GetSEO(seoSetting.Name)
 			return &myTd{
 				td: h.Td(),
 				child: h.Div(
 					VIcon(icon).Small(true).Class("mb-1"),
-					h.Text(seo.name),
+					h.Text(seoSetting.Name),
 				).Style(fmt.Sprintf("padding-left: %dpx;", 32*(priority-1))),
 			}
 		},
