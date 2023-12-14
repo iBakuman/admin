@@ -51,7 +51,10 @@ func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder
 		ComponentFunc(b.EditingComponentFunc).
 		SetterFunc(EditSetterFunc)
 
-	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO").RightDrawerWidth("1000")
+	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").
+		Label("SEO").
+		RightDrawerWidth("1000").
+		LayoutConfig(&presets.LayoutConfig{SearchBoxInvisible: true})
 
 	// Configure Listing Page
 	b.configListing(seoModel)
