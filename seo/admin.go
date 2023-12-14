@@ -51,7 +51,13 @@ func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder
 		ComponentFunc(b.EditingComponentFunc).
 		SetterFunc(EditSetterFunc)
 
-	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").Label("SEO").RightDrawerWidth("1000")
+	seoModel = pb.Model(&QorSEOSetting{}).PrimaryField("Name").
+		Label("SEO").
+		RightDrawerWidth("1000").
+		LayoutConfig(&presets.LayoutConfig{
+			SearchBoxInvisible:          true,
+			NotificationCenterInvisible: true,
+		})
 
 	// Configure Listing Page
 	b.configListing(seoModel)
@@ -68,11 +74,12 @@ func (b *Builder) Configure(pb *presets.Builder) (seoModel *presets.ModelBuilder
 }
 
 func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
-	listing := seoModel.Listing("Name")
+	listing := seoModel.Listing("Name").Title("SEO")
 	// disable new btn globally, no one can add new SEO record after the server start up.
 	listing.NewButtonFunc(func(ctx *web.EventContext) h.HTMLComponent {
 		return nil
 	})
+	listing.DisablePagination(true)
 
 	// Remove the row menu from each row
 	listing.RowMenu().Empty()
