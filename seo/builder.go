@@ -229,20 +229,26 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 }
 
 // BatchRender rendering multiple SEOs at once.
+// objs must be a slice, and each element in objs must be of the same type.
 // It is the responsibility of the caller to ensure that every element in objs
 // is of the same type, as it is performance-intensive to check whether each element
 // in `objs` if of the same type through reflection.
-func (b *Builder) BatchRender(objs []interface{}, req *http.Request) []h.HTMLComponent {
-	if len(objs) == 0 {
+func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLComponent {
+	v := reflect.ValueOf(objs)
+	if v.Kind() != reflect.Slice {
+		panic("the objs must be a slice")
+	}
+	if v.Len() == 0 {
 		return nil
 	}
-	seo := b.GetSEO(objs[0])
+	seo := b.GetSEO(v.Index(0).Interface())
 	if seo == nil {
 		return nil
 	}
 	finalSeoSettings := seo.getFinalQorSEOSetting(b.db)
-	comps := make([]h.HTMLComponent, 0, len(objs))
-	for _, obj := range objs {
+	comps := make([]h.HTMLComponent, 0, v.Len())
+	for i := 0; i < v.Len(); i++ {
+		obj := v.Index(i).Interface()
 		locale := defaultLocale
 		if v, ok := obj.(l10n.L10nInterface); ok {
 			if v.GetLocale() != "" {
