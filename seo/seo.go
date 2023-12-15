@@ -291,7 +291,7 @@ func (seo *SEO) getFinalQorSEOSetting(db *gorm.DB) map[string]*QorSEOSetting {
 	for _, seoSet := range seoSets {
 		locale := seoSet.Locale.LocaleCode
 		setsOfParent := seoSetsOfParent[locale]
-		if seoSetsOfParent == nil {
+		if setsOfParent == nil {
 			r[locale] = seoSet
 			continue
 		}
