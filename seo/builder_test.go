@@ -18,13 +18,23 @@ func TestBuilder_Render(t *testing.T) {
 		URL:    u,
 	}
 
-	globalSeoSetting := QorSEOSetting{
-		Name: defaultGlobalSEOName,
-		Setting: Setting{
-			Title: "global | {{SiteName}}",
+	globalSeoSetting := []*QorSEOSetting{
+		{
+			Name: defaultGlobalSEOName,
+			Setting: Setting{
+				Title: "global | {{SiteName}}",
+			},
+			Variables: map[string]string{"SiteName": "Qor5 dev"},
+			Locale:    l10n.Locale{LocaleCode: defaultLocale},
 		},
-		Variables: map[string]string{"SiteName": "Qor5 dev"},
-		Locale:    l10n.Locale{LocaleCode: defaultLocale},
+		{
+			Name: defaultGlobalSEOName,
+			Setting: Setting{
+				Title: "全局 | {{SiteName}}",
+			},
+			Variables: map[string]string{"SiteName": "Qor5 开发"},
+			Locale:    l10n.Locale{LocaleCode: "zh"},
+		},
 	}
 
 	tests := []struct {
@@ -35,7 +45,7 @@ func TestBuilder_Render(t *testing.T) {
 		want      string
 	}{
 		{
-			name:      "Render Global SEO with setting variables and default context variables",
+			name:      "Render_Global_SEO_with_setting_variables_and_default_context_variables",
 			prepareDB: func() { dbForTest.Save(&globalSeoSetting) },
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
@@ -46,14 +56,46 @@ func TestBuilder_Render(t *testing.T) {
 					})
 				return builder
 			}(),
-			obj: defaultGlobalSEOName,
+			obj: &NameObj{defaultGlobalSEOName, defaultLocale},
 			want: `
 			<title>global | Qor5 dev</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
 			`,
 		},
 		{
-			name: "Render SEO setting with global setting variables",
+			name: "Render_model_seo_with_locale",
+			prepareDB: func() {
+				dbForTest.Save(&globalSeoSetting)
+				product := QorSEOSetting{
+					Name: "Product",
+					Setting: Setting{
+						Title: "product | {{SiteName}}",
+					},
+					Variables: map[string]string{"SiteName": "Qor5 开发"},
+					Locale:    l10n.Locale{LocaleCode: "zh"},
+				}
+				dbForTest.Save(&product)
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest)
+				builder.GetGlobalSEO().AppendChildren(
+					builder.RegisterSEO("Product", &Product{}),
+				)
+				return builder
+			}(),
+			obj: &Product{
+				Name: "product 1",
+				SEO: Setting{
+					Title:            "product1",
+					EnabledCustomize: true,
+				},
+				Locale: l10n.Locale{LocaleCode: "zh"},
+			},
+			want: `<title>product1</title>`,
+		},
+
+		{
+			name: "Render_no_model_seo_with_global_setting_variables",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -72,12 +114,44 @@ func TestBuilder_Render(t *testing.T) {
 				)
 				return builder
 			}(),
-			obj:  "Product",
+			obj:  &NameObj{"Product", defaultLocale},
 			want: `<title>product | Qor5 dev</title>`,
 		},
 
 		{
-			name: "Render SEO setting with setting and opengraph prop",
+			name: "Render_no_model_seo_with_locale",
+			prepareDB: func() {
+				dbForTest.Save(&globalSeoSetting)
+				product := []*QorSEOSetting{
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "product | {{SiteName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: defaultLocale},
+					},
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "产品 | {{SiteName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: "zh"},
+					},
+				}
+				dbForTest.Save(&product)
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest, WithLocales(defaultLocale, "zh"))
+				builder.GetGlobalSEO().AppendChildren(
+					builder.RegisterSEO("Product"),
+				)
+				return builder
+			}(),
+			obj:  &NameObj{"Product", "zh"},
+			want: `<title>产品 | Qor5 开发</title>`,
+		},
+		{
+			name: "Render_SEO_setting_with_setting_and_opengraph_prop_and_without_locale",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -92,7 +166,7 @@ func TestBuilder_Render(t *testing.T) {
 			},
 			builder: func() *Builder {
 				builder := NewBuilder(dbForTest)
-				builder.RegisterSEO("Product").
+				builder.RegisterSEO("Product", &Product{}).
 					RegisterSettingVariables("ProductTag").
 					RegisterMetaProperty("og:image",
 						func(i interface{}, setting *Setting, request *http.Request) string {
@@ -101,14 +175,16 @@ func TestBuilder_Render(t *testing.T) {
 					).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
-			obj: "Product",
+			obj: &Product{
+				Name: "product",
+			},
 			want: `
 			<title>product Men | Qor5 dev</title>
 			<meta property='og:image' name='og:image' content='http://dev.qor5.com/images/logo.png'>`,
 		},
 
 		{
-			name: "Render model setting with global and SEO setting variables",
+			name: "Render_model_setting_with_global_and_SEO_setting_variables",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -123,7 +199,7 @@ func TestBuilder_Render(t *testing.T) {
 				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
-			obj: Product{
+			obj: &Product{
 				Name: "product 1",
 				SEO: Setting{
 					Title:            "product1 | {{ProductTag}} | {{SiteName}}",
@@ -134,7 +210,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting with default SEO setting",
+			name: "Render_model_setting_with_default_SEO_setting",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -152,7 +228,7 @@ func TestBuilder_Render(t *testing.T) {
 				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
-			obj: Product{
+			obj: &Product{
 				Name: "product 1",
 				SEO: Setting{
 					Title:            "product1 | {{ProductTag}} | {{SiteName}}",
@@ -163,7 +239,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting with inherit global and SEO setting",
+			name: "Render_model_setting_with_inherit_global_and_SEO_setting",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -181,7 +257,7 @@ func TestBuilder_Render(t *testing.T) {
 				builder.RegisterSEO("Product", &Product{}).SetParent(builder.GetGlobalSEO())
 				return builder
 			}(),
-			obj: Product{
+			obj: &Product{
 				Name: "product 1",
 				SEO: Setting{
 					Keywords:         "shoes, {{ProductTag}}",
@@ -196,7 +272,7 @@ func TestBuilder_Render(t *testing.T) {
 		},
 
 		{
-			name: "Render model setting without inherit global and SEO setting",
+			name: "Render_model_setting_without_inherit_global_and_SEO_setting",
 			prepareDB: func() {
 				dbForTest.Save(&globalSeoSetting)
 				product := QorSEOSetting{
@@ -214,7 +290,7 @@ func TestBuilder_Render(t *testing.T) {
 				builder.RegisterSEO("Product", &Product{})
 				return builder
 			}(),
-			obj: Product{
+			obj: &Product{
 				Name: "product 1",
 				SEO: Setting{
 					Keywords:         "shoes, {{ProductTag}}",
@@ -390,14 +466,23 @@ func TestBuilder_BatchRender(t *testing.T) {
 		Method: "GET",
 		URL:    u,
 	}
-
-	globalSeoSetting := QorSEOSetting{
-		Name: defaultGlobalSEOName,
-		Setting: Setting{
-			Title: "global | {{SiteName}}",
+	globalSeoSetting := []*QorSEOSetting{
+		{
+			Name: defaultGlobalSEOName,
+			Setting: Setting{
+				Title: "global | {{SiteName}}",
+			},
+			Variables: map[string]string{"SiteName": "Qor5 dev"},
+			Locale:    l10n.Locale{LocaleCode: defaultLocale},
 		},
-		Variables: map[string]string{"SiteName": "Qor5 dev"},
-		Locale:    l10n.Locale{LocaleCode: defaultLocale},
+		{
+			Name: defaultGlobalSEOName,
+			Setting: Setting{
+				Title: "全局 | {{SiteName}}",
+			},
+			Variables: map[string]string{"SiteName": "Qor5 开发"},
+			Locale:    l10n.Locale{LocaleCode: "zh"},
+		},
 	}
 
 	cases := []struct {
@@ -434,7 +519,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 				builder.RegisterSEO("Product", &Product{})
 				return builder
 			}(),
-			objs: []string{"Product"},
+			objs: []*NameObj{{Name: "Product"}},
 			wants: []string{`
 			<title>product | Qor5 dev</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
@@ -508,7 +593,6 @@ func TestBuilder_BatchRender(t *testing.T) {
 					panic(err)
 				}
 				settings := []*QorSEOSetting{
-					&globalSeoSetting,
 					{
 						Name: "Default PLP",
 						Setting: Setting{
@@ -595,27 +679,11 @@ func TestBuilder_BatchRender(t *testing.T) {
 				}
 				settings := []*QorSEOSetting{
 					{
-						Name: defaultGlobalSEOName,
-						Setting: Setting{
-							Title: "global | {{SiteName}}",
-						},
-						Variables: map[string]string{"SiteName": "Qor5 dev"},
-						Locale:    l10n.Locale{LocaleCode: "en"},
-					},
-					{
-						Name: defaultGlobalSEOName,
-						Setting: Setting{
-							Title: "全局 | {{SiteName}}",
-						},
-						Variables: map[string]string{"SiteName": "Qor5 开发"},
-						Locale:    l10n.Locale{LocaleCode: "zh"},
-					},
-					{
 						Name: "Product",
 						Setting: Setting{
 							Title: "product | {{ProductName}}",
 						},
-						Locale: l10n.Locale{LocaleCode: "en"},
+						Locale: l10n.Locale{LocaleCode: defaultLocale},
 					},
 					{
 						Name: "Product",
@@ -630,7 +698,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 				}
 			},
 			builder: func() *Builder {
-				builder := NewBuilder(dbForTest, WithLocales("en", "zh"))
+				builder := NewBuilder(dbForTest, WithLocales(defaultLocale, "zh"))
 				builder.GetGlobalSEO().RegisterMetaProperty(
 					"og:url",
 					func(_ interface{}, _ *Setting, req *http.Request) string {
@@ -670,7 +738,7 @@ func TestBuilder_BatchRender(t *testing.T) {
 					},
 					Locale: l10n.Locale{LocaleCode: "en"},
 				},
-				&Product{
+				{
 					Name: "产品B",
 					SEO: Setting{
 						Title:            "{{ProductName}}",
@@ -694,6 +762,69 @@ func TestBuilder_BatchRender(t *testing.T) {
 `,
 				`
 			<title>产品 | 产品B</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`,
+			},
+		},
+		{
+			name: "render_multiple_no_seos_with_different_locale",
+			prepareDB: func() {
+				if err := dbForTest.Save(&globalSeoSetting).Error; err != nil {
+					panic(err)
+				}
+				settings := []*QorSEOSetting{
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "product | {{ProductName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: defaultLocale},
+					},
+					{
+						Name: "Product",
+						Setting: Setting{
+							Title: "产品 | {{ProductName}}",
+						},
+						Locale: l10n.Locale{LocaleCode: "zh"},
+					},
+				}
+				if err := dbForTest.Save(&settings).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest, WithLocales(defaultLocale, "zh"))
+				builder.GetGlobalSEO().RegisterMetaProperty(
+					"og:url",
+					func(_ interface{}, _ *Setting, req *http.Request) string {
+						return req.URL.String()
+					})
+				builder.RegisterSEO("Product", Product{}).RegisterContextVariable(
+					"ProductName",
+					func(obj interface{}, _ *Setting, _ *http.Request) string {
+						if product, ok := obj.(*Product); ok {
+							return product.Name
+						}
+						return "ProductName"
+					},
+				)
+				return builder
+			}(),
+			objs: []*NameObj{
+				{
+					Name:   "Product",
+					Locale: defaultLocale,
+				},
+				{
+					Name:   "Product",
+					Locale: "zh",
+				},
+			},
+			wants: []string{`
+			<title>product | ProductName</title>
+			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
+`, `
+			<title>产品 | ProductName</title>
 			<meta property='og:url' name='og:url' content='http://dev.qor5.com/product/1'>
 `,
 			},

@@ -44,12 +44,27 @@ The second parameter named `model` in the `RegisterSEO(name string, model ...int
 instance of a type that has a field of type `Setting`. If you pass a  `model` whose type
 does not have such a field, the program will panic.
 
+For Example:
+
 ```go
 builder.RegisterSEO("Test")
 type Test struct {
     ...
 }
 builder.RegisterSEO("Test", &Test{}) // will panic
+```
+
+There are two types of SEOs, one is SEO with model, the other is SEO without model.
+if you want to register a no model SEO, you can call RegisterSEO method like this:
+
+```go
+seoBuilder.RegisterSEO("About Us")
+```
+
+if you want to register a SEO with model, you can call RegisterSEO method like this:
+
+```go
+seoBuilder.RegisterSEO("Product", &Product{})
 ```
 
 - Remove a SEO
@@ -137,9 +152,13 @@ builder.RegisterSEO("Test", &Test{}) // will panic
 
 ## Render SEO html data
 
-- Render a single seo
+### Render a single seo
+
+- Render a single seo with model
 
   To call `Render(obj interface{}, req *http.Request)` for rendering a single seo.
+
+  NOTE: `obj` must be of type *NameObj or a pointer to a struct that has a field of type `Setting`.
 
   ```go
   type Post struct {
@@ -202,7 +221,15 @@ builder.RegisterSEO("Test", &Test{}) // will panic
   <meta property='og:title' name='og:title' content='Title for og:title'>
   ```
 
-- Batch render
+- Render a single seo without model
+
+  ```go
+    seoBuilder.Render(&NameObj{"About US", Locale: "en"})
+  ```
+
+### Render multiple SEOs at once
+
+- Render multiple SEOs with model
 
   To call `BatchRender(objs []interface, req *http.Request)` for batch rendering.
 
@@ -306,3 +333,30 @@ builder.RegisterSEO("Test", &Test{}) // will panic
 
   ----------------------------
   ```
+
+- Render multiple SEOs without model
+
+  For Example:
+
+  ```go
+  seoBuilder.BatchRender(
+       []*NameObj{
+           {
+               Name:   "Product",
+               Locale: defaultLocale,
+           },
+           {
+               Name:   "Product",
+               Locale: "zh",
+           },
+       }
+   )
+   ```
+
+   NOTE: you cannot pass a slice of NameObj which contains different names to objs.
+
+   For Example: DO NOT DO IT
+
+   ```go
+   b.BatchRender([]*NameObj{{Name: "About Us", Locale: "en"}, {Name: "Contact Us", Locale: "zh"}})
+   ```

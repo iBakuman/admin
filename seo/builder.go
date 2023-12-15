@@ -92,10 +92,17 @@ type Builder struct {
 // @snippet_end
 
 // RegisterSEO registers a SEO through name or model.
+// There are two types of SEOs, one is SEO with model, the other is SEO without model.
+// if you want to register a no model SEO, you can call RegisterSEO method like this:
+// seoBuilder.RegisterSEO("About Us")
+// if you want to register a SEO with model, you can call RegisterSEO method like this:
+// seoBuilder.RegisterSEO("Product", &Product{})
+//
 // If the SEO to be registered already exists, it will panic.
 // The optional second parameter names `model` is an instance of a type
 // that has a field of type `Setting`, if the type of model does not have
 // such field or len(model) > 1, the program will panic.
+//
 // The default parent of the registered SEO is global seo. If you need to set
 // its parent, Please call the SetParent method of SEO after invoking RegisterSEO method.
 // For Example: b.RegisterSEO("Region", &Region{}).SetParent(parentSEO)
@@ -156,9 +163,8 @@ func (b *Builder) RemoveSEO(obj interface{}) *Builder {
 
 // GetSEO retrieves the specified SEO, It accepts two types of parameters.
 // One is a string, where the literal value of the parameter is the name of the SEO.
-// The other is an instance of a struct embedded with the Setting type, in which case
-// the SEO name is obtained from the type name that is retrieved through reflection.
-// If no SEO with the specified name is found, it returns nil.
+// The other is an instance of a struct that has a field of type `Setting`, in which case
+// the SEO corresponding to the type of the struct will be returned.
 func (b *Builder) GetSEO(obj interface{}) *SEO {
 	switch res := obj.(type) {
 	case string:
@@ -186,6 +192,8 @@ func (b *Builder) GetSEOPriority(name string) int {
 	return depth
 }
 
+// SortSEOs sorts the SEOs in the order of their priority.
+// The global SEO is always the first element in the sorted slice.
 func (b *Builder) SortSEOs(SEOs []*QorSEOSetting) {
 	orders := make(map[string]int)
 	order := 0
@@ -212,17 +220,52 @@ func (b *Builder) AfterSave(v func(ctx context.Context, settingName string, loca
 	return b
 }
 
+// NameObj is used to store the name and locale of no model SEO.
+// If you register a SEO without model,
+// For example: b.RegisterSEO("About Us")
+// When you call the Render method of Builder to render no model SEO,
+// you must pass a NameObj to it.
+// For Example: b.Render(NameObj{Name: "About Us", Locale: "en"})
+type NameObj struct {
+	Name   string
+	Locale string
+}
+
+// Render renders the SEO according to the specified object.
+// obj must be of type *NameObj or a pointer to a struct that has a field of type `Setting`.
+//
+// if the obj is an instance of NameObj, it will render the no model SEO.
+// For Example: following code will render the no model SEO named "About Us" with locale "en".
+// b.Render(&NameObj{Name: "About Us", Locale: "en"})
+//
+// if the locale is empty, the default locale will be used.
+// For Example: following code will render the no model SEO named "About Us" with default locale.
+// b.Render(&NameObj{Name: "About Us"})
+//
+// the default locale is "en"
 func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
-	seo := b.GetSEO(obj)
+	var seo *SEO
+	var locale string
+	objV := reflect.ValueOf(obj)
+	if objV.Kind() != reflect.Ptr {
+		panic("the obj must be a pointer to a struct")
+	}
+	if nameObj, ok := obj.(*NameObj); ok {
+		seo = b.registeredSEO[nameObj.Name]
+		locale = nameObj.Locale
+	} else {
+		objV = reflect.Indirect(objV)
+		seo = b.registeredSEO[objV.Type()]
+	}
+	// if the seo is not registered, return empty html component.
 	if seo == nil {
 		return h.RawHTML("")
 	}
-
-	locale := defaultLocale
 	if v, ok := obj.(l10n.L10nInterface); ok {
-		if v.GetLocale() != "" {
-			locale = v.GetLocale()
-		}
+		locale = v.GetLocale()
+	}
+	if strings.TrimSpace(locale) == "" {
+		locale = defaultLocale
 	}
 	localeFinalSeoSetting := seo.getLocaleFinalQorSEOSetting(locale, b.db)
 	return b.render(obj, localeFinalSeoSetting, seo, req)
@@ -233,6 +276,14 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 // It is the responsibility of the caller to ensure that every element in objs
 // is of the same type, as it is performance-intensive to check whether each element
 // in `objs` if of the same type through reflection.
+//
+// if you want to render no model SEO, you must pass a slice of NameObj to objs.
+// For Example:
+// b.BatchRender([]*NameObj{{Name: "About Us", Locale: "en"}, {Name: "About Us", Locale: "zh"}})
+//
+// NOTE: you cannot pass a slice of NameObj which contains different names to objs.
+// For Example: DO NOT DO IT
+// b.BatchRender([]*NameObj{{Name: "About Us", Locale: "en"}, {Name: "Contact Us", Locale: "zh"}})
 func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLComponent {
 	v := reflect.ValueOf(objs)
 	if v.Kind() != reflect.Slice {
@@ -241,19 +292,42 @@ func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLCompo
 	if v.Len() == 0 {
 		return nil
 	}
-	seo := b.GetSEO(v.Index(0).Interface())
+
+	// get seo according to the type of the first element in objs.
+	// if the first element is NameObj, get seo according to the value of its Name field.
+	var seo *SEO
+	isNameObj := false
+	vAtIndex0 := reflect.Indirect(v.Index(0))
+	if vAtIndex0.Type() == reflect.TypeOf(NameObj{}) {
+		seo = b.registeredSEO[vAtIndex0.Interface().(NameObj).Name]
+		isNameObj = true
+	} else {
+		seo = b.registeredSEO[vAtIndex0.Type()]
+	}
 	if seo == nil {
 		return nil
 	}
+
 	finalSeoSettings := seo.getFinalQorSEOSetting(b.db)
 	comps := make([]h.HTMLComponent, 0, v.Len())
 	for i := 0; i < v.Len(); i++ {
-		obj := v.Index(i).Interface()
-		locale := defaultLocale
-		if v, ok := obj.(l10n.L10nInterface); ok {
-			if v.GetLocale() != "" {
-				locale = v.GetLocale()
-			}
+		// the purpose of reflect.Indirect(reflect.ValueOf(obj).Index(i)).Addr().Interface()
+		// is to get the pointer of the element in objs.
+		// if the element in objs is a pointer, it will return the pointer itself.
+		// if the element in objs is not a pointer, it will return a pointer to the element.
+		// this will prevent unnecessary value copy and caller can use a slice of value type
+		// to call BatchRender method.
+		// For Example:
+		// b.BatchRender([]Product{...}) // []Product is a slice of value type.
+		obj := reflect.Indirect(v.Index(i)).Addr().Interface()
+		var locale string
+		if isNameObj {
+			locale = obj.(*NameObj).Locale
+		} else if v, ok := obj.(l10n.L10nInterface); ok {
+			locale = v.GetLocale()
+		}
+		if strings.TrimSpace(locale) == "" {
+			locale = defaultLocale
 		}
 		defaultSetting := finalSeoSettings[locale]
 		if defaultSetting == nil {
