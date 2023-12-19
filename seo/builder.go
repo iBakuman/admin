@@ -19,7 +19,6 @@ import (
 
 const (
 	defaultGlobalSEOName = "Global SEO"
-	defaultLocale        = "en"
 )
 
 type (
@@ -45,20 +44,20 @@ func WithGlobalSEOName(name string) Option {
 	}
 }
 
-func WithLocales(locales ...string) Option {
-	return func(b *Builder) {
-		b.locales = locales
-	}
-}
-
-func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
+func NewBuilder(db *gorm.DB, locales []string, ops ...Option) *Builder {
 	globalSEO := &SEO{name: defaultGlobalSEOName}
 	globalSEO.RegisterSettingVariables("SiteName")
+	if len(locales) == 0 {
+		panic("the locales must not be empty")
+	}
+	locs := make([]string, len(locales))
+	copy(locs, locales)
 	b := &Builder{
 		registeredSEO: make(map[interface{}]*SEO),
 		seoRoot:       globalSEO,
 		inherited:     true,
 		db:            db,
+		locales:       locs,
 	}
 	b.registeredSEO[defaultGlobalSEOName] = b.seoRoot
 
@@ -70,6 +69,8 @@ func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
 		panic(err)
 	}
 
+	// NOTE: do not replace b.seoRoot.name with defaultGlobalSEOName.
+	// because the name of global seo may be changed by user through WithGlobalSEOName option.
 	if err := insertIfNotExists(db, b.seoRoot.name, b.locales); err != nil {
 		panic(err)
 	}
@@ -92,11 +93,12 @@ type Builder struct {
 // @snippet_end
 
 // RegisterSEO registers a SEO through name or model.
-// There are two types of SEOs, one is SEO with model, the other is SEO without model.
-// if you want to register a no model SEO, you can call RegisterSEO method like this:
+// There are two types of SEOs, one is SEO with model, the other is SEO without model aka 'non-model seo'.
+// if you want to register a non-model SEO, you can call RegisterSEO method like this:
 // seoBuilder.RegisterSEO("About Us")
 // if you want to register a SEO with model, you can call RegisterSEO method like this:
 // seoBuilder.RegisterSEO("Product", &Product{})
+// the first parameter of RegisterSEO method is the name of the SEO, it will be displayed in the admin user interface.
 //
 // If the SEO to be registered already exists, it will panic.
 // The optional second parameter names `model` is an instance of a type
@@ -106,13 +108,15 @@ type Builder struct {
 // The default parent of the registered SEO is global seo. If you need to set
 // its parent, Please call the SetParent method of SEO after invoking RegisterSEO method.
 // For Example: b.RegisterSEO("Region", &Region{}).SetParent(parentSEO)
+// Or you can call appendChild method of SEO to add the SEO to the specified parent.
+// For Example: b.GetGlobalSEO().appendChild(b.RegisterSEO("Region", &Region{}))
 func (b *Builder) RegisterSEO(name string, model ...interface{}) *SEO {
 	seoName := strings.TrimSpace(name)
 	if seoName == "" {
 		panic("the seo name must not be empty")
 	}
 	if _, isExist := b.registeredSEO[seoName]; isExist {
-		panic(fmt.Sprintf("The %v SEO already exists!", seoName))
+		panic(fmt.Sprintf("the %v SEO already exists!", seoName))
 	}
 
 	seo := &SEO{name: seoName}
@@ -220,29 +224,72 @@ func (b *Builder) AfterSave(v func(ctx context.Context, settingName string, loca
 	return b
 }
 
-// NameObj is used to store the name and locale of no model SEO.
+// NonModelSEO is used to store the name and locale of non-model SEO.
 // If you register a SEO without model,
 // For example: b.RegisterSEO("About Us")
-// When you call the Render method of Builder to render no model SEO,
-// you must pass a NameObj to it.
-// For Example: b.Render(NameObj{Name: "About Us", Locale: "en"})
-type NameObj struct {
-	Name   string
-	Locale string
+type NonModelSEO interface {
+	GetName() string
+	l10n.L10nInterface
+}
+
+type nonModelSEO struct {
+	Name string
+	l10n.Locale
+}
+
+func (n *nonModelSEO) GetName() string {
+	return n.Name
+}
+
+// NewNonModelSEO creates a nonModelSEO instance that implements NonModelSEO interface.
+// This function is only used to create a NonModelSEO instance passed to Render method.
+// the name parameter must be the same as the name you passed to RegisterSEO method.
+// For Example:
+// If you register a SEO like this: b.RegisterSEO("About Us"),
+// when you want render "About US" SEO, you must pass "About Us" to NewNonModelSEO method like this:
+// b.Render(NewNonModelSEO("About Us", "en"))
+//
+// For convenience, you can call NewNonModelSEO function without passing the locale parameter when
+// the locales passed to NewBuilder method is only one. Namely, NewBuilder(db, []string{"en"}).
+func NewNonModelSEO(name string, locale ...string) NonModelSEO {
+	var loc string
+	if len(locale) > 0 {
+		loc = locale[0]
+	}
+	return &nonModelSEO{
+		Name:   name,
+		Locale: l10n.Locale{LocaleCode: loc},
+	}
+}
+
+// NewNonModelSEOSlice creates a slice of NonModelSEO.
+// The function is only used to create a slice of NonModelSEO passed to BatchRender method.
+// For Example: following code will render the non-model SEO named "About Us" with locale "en" and "zh".
+// b.BatchRender(NewNonModelSEOSlice("About Us", "en", "zh"))
+func NewNonModelSEOSlice(name string, locales ...string) []NonModelSEO {
+	ret := make([]NonModelSEO, 0, len(locales))
+	for _, locale := range locales {
+		ret = append(ret, &nonModelSEO{
+			Name:   name,
+			Locale: l10n.Locale{LocaleCode: locale},
+		})
+	}
+	return ret
 }
 
 // Render renders the SEO according to the specified object.
-// obj must be of type *NameObj or a pointer to a struct that has a field of type `Setting`.
+// obj must be of type NonModelSEO or a pointer to a struct that has a field of type `Setting`.
 //
-// if the obj is an instance of NameObj, it will render the no model SEO.
-// For Example: following code will render the no model SEO named "About Us" with locale "en".
-// b.Render(&NameObj{Name: "About Us", Locale: "en"})
+// If the obj is an instance of NonModelSEO, it will render the non-model SEO.
+// For Example: following code will render the non-model SEO named "About Us" with locale "en".
+// b.render(NewNonModelSEO("About Us", "en"))
 //
-// if the locale is empty, the default locale will be used.
-// For Example: following code will render the no model SEO named "About Us" with default locale.
-// b.Render(&NameObj{Name: "About Us"})
-//
-// the default locale is "en"
+// When the locales passed to NewBuilder method is only one,
+// you can call NewNonModelSEO without passing the locale parameter.
+// in this case, the only locale passed to NewBuilder method will be used.
+// For Example: following code will render the non-model SEO named "About Us" with locale "en".
+// b := NewBuilder(db, []string{"en"})
+// b.Render(NewNonModelSEO("About Us"))
 func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	var seo *SEO
 	var locale string
@@ -250,9 +297,8 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	if objV.Kind() != reflect.Ptr {
 		panic("the obj must be a pointer to a struct")
 	}
-	if nameObj, ok := obj.(*NameObj); ok {
-		seo = b.registeredSEO[nameObj.Name]
-		locale = nameObj.Locale
+	if nModelSEO, ok := obj.(NonModelSEO); ok {
+		seo = b.registeredSEO[nModelSEO.GetName()]
 	} else {
 		objV = reflect.Indirect(objV)
 		seo = b.registeredSEO[objV.Type()]
@@ -264,8 +310,12 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	if v, ok := obj.(l10n.L10nInterface); ok {
 		locale = v.GetLocale()
 	}
-	if strings.TrimSpace(locale) == "" {
-		locale = defaultLocale
+	if locale == "" {
+		if len(b.locales) == 1 {
+			locale = b.locales[0]
+		} else {
+			return h.RawHTML("")
+		}
 	}
 	localeFinalSeoSetting := seo.getLocaleFinalQorSEOSetting(locale, b.db)
 	return b.render(obj, localeFinalSeoSetting, seo, req)
@@ -277,13 +327,10 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 // is of the same type, as it is performance-intensive to check whether each element
 // in `objs` if of the same type through reflection.
 //
-// if you want to render no model SEO, you must pass a slice of NameObj to objs.
-// For Example:
-// b.BatchRender([]*NameObj{{Name: "About Us", Locale: "en"}, {Name: "About Us", Locale: "zh"}})
-//
-// NOTE: you cannot pass a slice of NameObj which contains different names to objs.
-// For Example: DO NOT DO IT
-// b.BatchRender([]*NameObj{{Name: "About Us", Locale: "en"}, {Name: "Contact Us", Locale: "zh"}})
+// If you want to render non-model SEO, you must pass a slice of NonModelSEO to objs.
+// For convenience, you can call NewNonModelSEOSlice function to create a slice of NonModelSEO.
+// For Example: Following code will render the non-model SEO named "About Us" with locale "en" and "zh".
+// b.BatchRender(NewNonModelSEOSlice("About Us", "en", "zh"))
 func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLComponent {
 	v := reflect.ValueOf(objs)
 	if v.Kind() != reflect.Slice {
@@ -293,14 +340,14 @@ func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLCompo
 		return nil
 	}
 
-	// get seo according to the type of the first element in objs.
-	// if the first element is NameObj, get seo according to the value of its Name field.
+	// The seo retrieved from the first element in objs will be used to render all elements in objs.
+	// If the objs consists of different types of elements, the rendering result may be incorrect.
 	var seo *SEO
-	isNameObj := false
+	isNonModelSEO := false
 	vAtIndex0 := reflect.Indirect(v.Index(0))
-	if vAtIndex0.Type() == reflect.TypeOf(NameObj{}) {
-		seo = b.registeredSEO[vAtIndex0.Interface().(NameObj).Name]
-		isNameObj = true
+	if v, ok := vAtIndex0.Interface().(NonModelSEO); ok {
+		seo = b.registeredSEO[v.GetName()]
+		isNonModelSEO = true
 	} else {
 		seo = b.registeredSEO[vAtIndex0.Type()]
 	}
@@ -319,22 +366,31 @@ func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLCompo
 		// to call BatchRender method.
 		// For Example:
 		// b.BatchRender([]Product{...}) // []Product is a slice of value type.
-		obj := reflect.Indirect(v.Index(i)).Addr().Interface()
+		// obj := reflect.Indirect(v.Index(i)).Addr().Interface()
+		objV := reflect.Indirect(v.Index(i))
+		var obj interface{}
 		var locale string
-		if isNameObj {
-			locale = obj.(*NameObj).Locale
-		} else if v, ok := obj.(l10n.L10nInterface); ok {
-			locale = v.GetLocale()
+		if isNonModelSEO {
+			obj = objV.Interface()
+			locale = obj.(NonModelSEO).GetLocale()
+		} else {
+			obj = objV.Addr().Interface()
+			if v, ok := obj.(l10n.L10nInterface); ok {
+				locale = v.GetLocale()
+			}
 		}
 		if strings.TrimSpace(locale) == "" {
-			locale = defaultLocale
+			if len(b.locales) == 1 {
+				locale = b.locales[0]
+			} else {
+				panic("the locale must not be empty when the locales passed to NewBuilder method is more than one")
+			}
 		}
 		defaultSetting := finalSeoSettings[locale]
 		if defaultSetting == nil {
 			panic(fmt.Sprintf("There are no available seo configuration for %v locale", locale))
 		}
-		comp := b.render(obj, finalSeoSettings[locale], seo, req)
-		comps = append(comps, comp)
+		comps = append(comps, b.render(obj, defaultSetting, seo, req))
 	}
 	return comps
 }
@@ -429,20 +485,18 @@ func isAbsoluteURL(str string) bool {
 	return false
 }
 
+// insertIfNotExists inserts the specified seo with the specified locales into the database.
+// if the seo already exists, it will not be inserted into the database.
 func insertIfNotExists(db *gorm.DB, seoName string, locales []string) error {
 	settings := make([]QorSEOSetting, 0, len(locales))
 	if len(locales) == 0 {
+		panic("the locales must not be empty")
+	}
+	for _, locale := range locales {
 		settings = append(settings, QorSEOSetting{
 			Name:   seoName,
-			Locale: l10n.Locale{LocaleCode: defaultLocale},
+			Locale: l10n.Locale{LocaleCode: locale},
 		})
-	} else {
-		for _, locale := range locales {
-			settings = append(settings, QorSEOSetting{
-				Name:   seoName,
-				Locale: l10n.Locale{LocaleCode: locale},
-			})
-		}
 	}
 	// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
 	// or cause the create function to fail When the data to be inserted already exists in the database,
