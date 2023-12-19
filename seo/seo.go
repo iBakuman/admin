@@ -40,6 +40,10 @@ type SEO struct {
 	finalAvailableVarsCache map[string]struct{}
 }
 
+func (seo *SEO) GetName() string {
+	return seo.name
+}
+
 // @snippet_end
 
 // AppendChildren sets the parent of each child in the children to the current SEO.
