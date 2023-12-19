@@ -3,13 +3,13 @@ package seo
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/qor5/admin/l10n"
-	l10n_view "github.com/qor5/admin/l10n/views"
 	"github.com/qor5/admin/presets"
 	"github.com/qor5/admin/presets/gorm2op"
 	"github.com/theplant/testingutils"
@@ -20,6 +20,7 @@ func TestUpdate(t *testing.T) {
 	cases := []struct {
 		name      string
 		prepareDB func()
+		builder   func() *Builder
 		form      func() (*bytes.Buffer, *multipart.Writer)
 		expected  *QorSEOSetting
 		locale    string
@@ -27,7 +28,6 @@ func TestUpdate(t *testing.T) {
 		{
 			name: "update_setting",
 			prepareDB: func() {
-				resetDB()
 				seoSetting := QorSEOSetting{
 					Name:   "Product",
 					Locale: l10n.Locale{LocaleCode: "en"},
@@ -39,10 +39,17 @@ func TestUpdate(t *testing.T) {
 					panic(err)
 				}
 			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest, WithLocales("en"))
+				builder.RegisterSEO("Product Detail")
+				builder.RegisterSEO("Product")
+				return builder
+			},
 			form: func() (*bytes.Buffer, *multipart.Writer) {
 				form := &bytes.Buffer{}
 				mwriter := multipart.NewWriter(form)
 				must(mwriter.WriteField("Setting.Title", "productB"))
+				must(mwriter.WriteField("id", fmt.Sprintf("Product_%s", "en")))
 				must(mwriter.Close())
 				return form, mwriter
 			},
@@ -57,9 +64,44 @@ func TestUpdate(t *testing.T) {
 			locale: "en",
 		},
 		{
+			name: "update_setting_without_locale",
+			prepareDB: func() {
+				seoSetting := QorSEOSetting{
+					Name: "Product",
+					Setting: Setting{
+						Title: "productA",
+					},
+				}
+				if err := dbForTest.Save(&seoSetting).Error; err != nil {
+					panic(err)
+				}
+			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest)
+				builder.RegisterSEO("Product Detail")
+				builder.RegisterSEO("Product")
+				return builder
+			},
+			form: func() (*bytes.Buffer, *multipart.Writer) {
+				form := &bytes.Buffer{}
+				mwriter := multipart.NewWriter(form)
+				must(mwriter.WriteField("Setting.Title", "productB"))
+				must(mwriter.WriteField("id", "Product_"))
+				must(mwriter.Close())
+				return form, mwriter
+			},
+			expected: &QorSEOSetting{
+				Name: "Product",
+				Setting: Setting{
+					Title: "productB",
+				},
+				Variables: map[string]string{},
+			},
+			locale: "",
+		},
+		{
 			name: "update_variables",
 			prepareDB: func() {
-				resetDB()
 				seoSetting := QorSEOSetting{
 					Name:   "Product",
 					Locale: l10n.Locale{LocaleCode: "en"},
@@ -74,16 +116,26 @@ func TestUpdate(t *testing.T) {
 					panic(err)
 				}
 			},
+			builder: func() *Builder {
+				builder := NewBuilder(dbForTest, WithLocales("en"))
+				builder.RegisterSEO("Product Detail")
+				builder.RegisterSEO("Product")
+				return builder
+			},
 			form: func() (*bytes.Buffer, *multipart.Writer) {
 				form := &bytes.Buffer{}
 				mwriter := multipart.NewWriter(form)
 				must(mwriter.WriteField("Variables.varA", "B"))
+				must(mwriter.WriteField("id", fmt.Sprintf("Product_%s", "en")))
 				must(mwriter.Close())
 				return form, mwriter
 			},
 			expected: &QorSEOSetting{
 				Name:   "Product",
 				Locale: l10n.Locale{LocaleCode: "en"},
+				Setting: Setting{
+					Title: "productA",
+				},
 				Variables: map[string]string{
 					"varA": "B",
 				},
@@ -92,21 +144,24 @@ func TestUpdate(t *testing.T) {
 		},
 	}
 
-	admin := presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(dbForTest))
-	server := httptest.NewServer(admin)
-	builder := NewBuilder(dbForTest, WithLocales("en"))
-	builder.RegisterSEO("Product Detail")
-	builder.RegisterSEO("Product")
-	builder.Configure(admin)
-
-	l10nBuilder := l10n.New().RegisterLocales("en", "en", "English")
-	l10n_view.Configure(admin, dbForTest, l10nBuilder, nil)
-
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			resetDB()
+			if c.prepareDB != nil {
+				c.prepareDB()
+			}
+
+			admin := presets.New().URIPrefix("/admin").DataOperator(gorm2op.DataOperator(dbForTest))
+			server := httptest.NewServer(admin)
+
+			l10nBuilder := l10n.New()
+			l10nBuilder.RegisterLocales(c.locale, c.locale, c.locale)
+			builder := c.builder()
+			builder.Configure(admin)
+
 			form, mwriter := c.form()
 			req, err := http.DefaultClient.Post(
-				server.URL+"/admin/qor-seo-settings?__execute_event__=presets_Update&id=Product_"+c.locale,
+				server.URL+"/admin/qor-seo-settings?__execute_event__=presets_Update",
 				mwriter.FormDataContentType(),
 				form)
 			if err != nil {
