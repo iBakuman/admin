@@ -32,6 +32,12 @@ func WithInherit(inherited bool) Option {
 	}
 }
 
+func WithLocales(locales ...string) Option {
+	return func(b *Builder) {
+		b.locales = locales
+	}
+}
+
 func WithGlobalSEOName(name string) Option {
 	return func(b *Builder) {
 		name = strings.TrimSpace(name)
@@ -44,20 +50,14 @@ func WithGlobalSEOName(name string) Option {
 	}
 }
 
-func NewBuilder(db *gorm.DB, locales []string, ops ...Option) *Builder {
+func NewBuilder(db *gorm.DB, ops ...Option) *Builder {
 	globalSEO := &SEO{name: defaultGlobalSEOName}
 	globalSEO.RegisterSettingVariables("SiteName")
-	if len(locales) == 0 {
-		panic("the locales must not be empty")
-	}
-	locs := make([]string, len(locales))
-	copy(locs, locales)
 	b := &Builder{
 		registeredSEO: make(map[interface{}]*SEO),
 		seoRoot:       globalSEO,
 		inherited:     true,
 		db:            db,
-		locales:       locs,
 	}
 	b.registeredSEO[defaultGlobalSEOName] = b.seoRoot
 
@@ -310,12 +310,8 @@ func (b *Builder) Render(obj interface{}, req *http.Request) h.HTMLComponent {
 	if v, ok := obj.(l10n.L10nInterface); ok {
 		locale = v.GetLocale()
 	}
-	if locale == "" {
-		if len(b.locales) == 1 {
-			locale = b.locales[0]
-		} else {
-			return h.RawHTML("")
-		}
+	if locale == "" && len(b.locales) == 1 {
+		locale = b.locales[0]
 	}
 	localeFinalSeoSetting := seo.getLocaleFinalQorSEOSetting(locale, b.db)
 	return b.render(obj, localeFinalSeoSetting, seo, req)
@@ -379,13 +375,10 @@ func (b *Builder) BatchRender(objs interface{}, req *http.Request) []h.HTMLCompo
 				locale = v.GetLocale()
 			}
 		}
-		if strings.TrimSpace(locale) == "" {
-			if len(b.locales) == 1 {
-				locale = b.locales[0]
-			} else {
-				panic("the locale must not be empty when the locales passed to NewBuilder method is more than one")
-			}
+		if locale == "" && len(b.locales) == 1 {
+			locale = b.locales[0]
 		}
+
 		defaultSetting := finalSeoSettings[locale]
 		if defaultSetting == nil {
 			panic(fmt.Sprintf("There are no available seo configuration for %v locale", locale))
@@ -489,13 +482,15 @@ func isAbsoluteURL(str string) bool {
 // if the seo already exists, it will not be inserted into the database.
 func insertIfNotExists(db *gorm.DB, seoName string, locales []string) error {
 	settings := make([]QorSEOSetting, 0, len(locales))
-	if len(locales) == 0 {
-		panic("the locales must not be empty")
-	}
 	for _, locale := range locales {
 		settings = append(settings, QorSEOSetting{
 			Name:   seoName,
 			Locale: l10n.Locale{LocaleCode: locale},
+		})
+	}
+	if len(locales) == 0 {
+		settings = append(settings, QorSEOSetting{
+			Name: seoName,
 		})
 	}
 	// The aim to use `Clauses(clause.OnConflict{DoNothing: true})` is it will not affect the existing data
