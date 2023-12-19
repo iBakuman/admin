@@ -113,8 +113,13 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 			Query: "locale_code = ? and name in (?)",
 			Args:  []interface{}{locale, seoNames},
 		}
+
 		params.SQLConditions = append(params.SQLConditions, &cond)
 		r, totalCount, err = oldSearcher(model, params, ctx)
+		if totalCount == 0 {
+			panic("The localization of SEO is not configured correctly. " +
+				"Please check if you correctly configured the `WithLocales` option when initializing the SEO Builder.")
+		}
 		b.SortSEOs(r.([]*QorSEOSetting))
 		return
 	})
@@ -122,17 +127,16 @@ func (b *Builder) configListing(seoModel *presets.ModelBuilder) {
 
 func (b *Builder) configEditing(seoModel *presets.ModelBuilder) {
 	editing := seoModel.Editing("Variables", "Setting")
-	oldSaver := editing.Saver
 
 	// Customize the Saver to trigger the invocation of the `afterSave` hook function (if available)
 	// when updating the global seo.
 	editing.Saver = func(obj interface{}, id string, ctx *web.EventContext) (err error) {
 		seoSetting := obj.(*QorSEOSetting)
-		if err := oldSaver(obj, id, ctx); err != nil {
+		if err = b.db.Updates(obj).Error; err != nil {
 			return err
 		}
 		if b.afterSave != nil {
-			if err := b.afterSave(ctx.R.Context(), seoSetting.Name, seoSetting.LocaleCode); err != nil {
+			if err = b.afterSave(ctx.R.Context(), seoSetting.Name, seoSetting.LocaleCode); err != nil {
 				return err
 			}
 		}
