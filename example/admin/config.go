@@ -183,7 +183,6 @@ func NewConfig() Config {
 	// media_view.MediaLibraryPerPage = 3
 	// vips.UseVips(vips.Config{EnableGenerateWebp: true})
 	ConfigureSeo(b, db, l10nBuilder.GetSupportLocaleCodes()...)
-
 	b.MenuOrder(
 		"profile",
 		b.MenuGroup("Page Builder").SubItems(
