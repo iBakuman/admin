@@ -17,6 +17,10 @@ func init() {
 	if db, err := gorm.Open(postgres.Open(os.Getenv("DBURL")), &gorm.Config{}); err != nil {
 		panic(err)
 	} else {
+		err := db.AutoMigrate(&QorSEOSetting{})
+		if err != nil {
+			panic("failed to migrate db")
+		}
 		dbForTest = db
 	}
 }
